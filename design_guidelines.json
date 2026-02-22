@@ -1,0 +1,163 @@
+{
+  "design_system": {
+    "identity": {
+      "name": "CareerArchitect",
+      "persona": "The Architect of Careers",
+      "vibe": "Precision, Clarity, Professionalism, Human-Centric Tech",
+      "theme_strategy": "Primary Light Mode (Paper/Document feel) with High-Contrast Dark Mode for power users."
+    },
+    "typography": {
+      "font_family": {
+        "headings": "Outfit, sans-serif",
+        "body": "DM Sans, sans-serif",
+        "mono": "JetBrains Mono, monospace"
+      },
+      "weights": {
+        "headings": "700 (Bold) or 500 (Medium)",
+        "body": "400 (Regular) and 500 (Medium)"
+      },
+      "scale": {
+        "h1": "text-5xl md:text-7xl tracking-tight leading-none",
+        "h2": "text-4xl md:text-5xl tracking-tight",
+        "h3": "text-2xl md:text-3xl font-medium",
+        "body_lg": "text-lg leading-relaxed",
+        "body_base": "text-base leading-relaxed",
+        "caption": "text-sm text-muted-foreground uppercase tracking-wider"
+      },
+      "imports": [
+        "@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;700;900&display=swap');"
+      ]
+    },
+    "colors": {
+      "palette": {
+        "primary": {
+          "name": "Blueprint Blue",
+          "hex": "#0F52BA",
+          "tailwind": "bg-blue-700 text-white hover:bg-blue-800"
+        },
+        "secondary": {
+          "name": "Drafting Grey",
+          "hex": "#F1F5F9",
+          "tailwind": "bg-slate-100 text-slate-900"
+        },
+        "accent": {
+          "name": "Signal Green",
+          "hex": "#00CC66",
+          "tailwind": "text-green-600 bg-green-100"
+        },
+        "background": {
+          "light": "#FFFFFF",
+          "dark": "#0A0A0A",
+          "paper": "#FAFAFA"
+        },
+        "text": {
+          "primary": "#0F172A",
+          "secondary": "#64748B",
+          "muted": "#94A3B8"
+        }
+      },
+      "gradients": {
+        "hero": "bg-gradient-to-br from-blue-50 via-white to-slate-50",
+        "ats_score_high": "bg-gradient-to-r from-green-400 to-emerald-600",
+        "ats_score_low": "bg-gradient-to-r from-orange-400 to-red-600"
+      }
+    },
+    "spacing": {
+      "container_padding": "px-6 md:px-12 lg:px-24",
+      "section_gap": "py-20 md:py-32",
+      "element_gap": "gap-6 md:gap-8"
+    },
+    "visual_enhancers": {
+      "radius": "rounded-xl",
+      "shadows": {
+        "card": "shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition-shadow duration-300",
+        "paper": "shadow-[0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_rgba(0,0,0,0.06)]",
+        "floating": "shadow-2xl shadow-blue-900/10"
+      },
+      "borders": "border border-slate-200 dark:border-slate-800",
+      "glass": "bg-white/80 backdrop-blur-md border-b border-white/20"
+    }
+  },
+  "layout_strategies": {
+    "landing_page": {
+      "structure": "Hero (Left Align Text, Right 3D/Image) -> Value Props (Bento Grid) -> How It Works (Step Zig-Zag) -> Testimonials -> Pricing -> Footer",
+      "hero_style": "Massive typography 'BEAT THE BOT'. Background subtle grid pattern.",
+      "bento_grid": "Use 'Tetris' mode. Mix text blocks with visual stats (e.g., '95% ATS Score' card)."
+    },
+    "resume_builder": {
+      "structure": "Split Screen. Left: Editor (Scrollable Form). Right: Preview (Sticky, Zoomable).",
+      "editor_panel": "Clean, accordion-based sections. Minimal inputs. 'Zen Mode' toggle to hide sidebar.",
+      "preview_panel": "Realistic paper rendering. Grey background (#E2E8F0) to make the white paper pop."
+    },
+    "dashboard": {
+      "structure": "Sidebar Nav + Main Content Area.",
+      "widgets": "Resume List (Grid), ATS Score History (Line Chart), Job Tracker (Kanban-lite)."
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "h-12 px-8 rounded-full bg-blue-700 text-white font-medium hover:bg-blue-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-blue-700/20",
+      "secondary": "h-12 px-8 rounded-full bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 hover:border-slate-300 transition-all",
+      "ghost": "h-10 px-4 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+    },
+    "cards": {
+      "feature": "p-8 rounded-2xl bg-white border border-slate-100 shadow-card hover:-translate-y-1 transition-transform",
+      "pricing": "p-8 rounded-3xl border border-slate-200 bg-white relative overflow-hidden. Highlight 'Pro' with a blue border ring."
+    },
+    "inputs": {
+      "default": "h-11 rounded-lg border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all"
+    },
+    "ats_gauge": {
+      "description": "Radial progress circle. Center text shows score. Color changes based on value (0-50 Red, 51-79 Orange, 80+ Green).",
+      "style": "Use SVG or Recharts. Stroke width 12px. Rounded caps."
+    }
+  },
+  "assets": {
+    "images": [
+      {
+        "category": "hero_background",
+        "url": "https://images.unsplash.com/photo-1759156771079-6fef5b8d66c9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjB3b3JraW5nJTIwbGFwdG9wJTIwbW9kZXJuJTIwb2ZmaWNlJTIwbWluaW1hbGlzdCUyMGpvYiUyMGludGVydmlldyUyMHN1Y2Nlc3MlMjByZXN1bWUlMjBkb2N1bWVudCUyMGZsYXRsYXl8ZW58MHx8fHwxNzcxNzQ3MDE4fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Clean, minimalist workspace top-down view. Use as subtle background or hero image."
+      },
+      {
+        "category": "success_moment",
+        "url": "https://images.pexels.com/photos/5989943/pexels-photo-5989943.jpeg",
+        "description": "Professional interview/meeting setting. Use for 'Get Hired' section."
+      },
+      {
+        "category": "working_professional",
+        "url": "https://images.pexels.com/photos/5668858/pexels-photo-5668858.jpeg",
+        "description": "Person focused on work/resume. Use for 'How it works' or features section."
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5px. Size 20px or 24px."
+    }
+  },
+  "motion": {
+    "page_transition": "initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}",
+    "hover_lift": "hover:-translate-y-1 transition-transform duration-300 ease-out",
+    "stagger_children": "variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } }}"
+  },
+  "universal_guidelines": [
+    "DO NOT use generic centered layouts. Use asymmetry.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: transition: all.",
+    "You MUST NOT center align the app container.",
+    "Always use modern button styles like pill-shaped.",
+    "NEVER use AI assistant Emoji characters.",
+    "Every interaction needs micro-animations.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "All interactive elements MUST include a data-testid attribute."
+  ],
+  "instructions_to_main_agent": {
+    "file_types": "Use .js and .jsx extensions for React files. Do not use .tsx.",
+    "styling": "Use Tailwind CSS for all styling. Use Shadcn UI components (customized) for complex interactions.",
+    "state_management": "Use React Context or simple state for the builder. Persist to localStorage/MongoDB.",
+    "ats_logic": "Mock the GPT-5.2 scoring for UI development if API is not available, but build the UI to handle async scoring states (Loading -> Result).",
+    "monetization": "Place AdSense placeholders in the Dashboard sidebar and below the Resume Preview. Add 'Upgrade to Pro' banners in the free tier."
+  }
+}
