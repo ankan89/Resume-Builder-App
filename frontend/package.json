@@ -63,7 +63,7 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "craco build",
+    "build": "NODE_OPTIONS=--openssl-legacy-provider craco build",
     "test": "craco test"
   },
   "browserslist": {
@@ -77,6 +77,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "resolutions": {
+    "ajv": "8.17.1",
+    "ajv-keywords": "5.1.0"
   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
