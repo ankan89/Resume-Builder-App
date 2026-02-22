@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { FileText, Plus, Target, LogOut, Crown, TrendingUp } from 'lucide-react';
+import { FileText, Plus, Target, LogOut, Crown, TrendingUp, Zap } from 'lucide-react';
 import { AuthContext } from '../App';
 import AdSense from '../components/AdSense';
 import AffiliateLinks from '../components/AffiliateLinks';
@@ -141,14 +141,24 @@ const Dashboard = () => {
         <div className="mb-12">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-3xl font-bold" style={{ fontFamily: 'Outfit' }}>My Resumes</h2>
-            <button
-              data-testid="create-resume-btn"
-              onClick={createNewResume}
-              className="flex items-center gap-2 h-12 px-6 rounded-full bg-blue-700 text-white font-medium hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/20"
-            >
-              <Plus className="w-5 h-5" />
-              New Resume
-            </button>
+            <div className="flex gap-3">
+              <button
+                data-testid="batch-generate-btn"
+                onClick={() => navigate('/batch-generate')}
+                className="flex items-center gap-2 h-12 px-6 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-medium hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg shadow-purple-600/20"
+              >
+                <Zap className="w-5 h-5" />
+                AI Multi-Resume
+              </button>
+              <button
+                data-testid="create-resume-btn"
+                onClick={createNewResume}
+                className="flex items-center gap-2 h-12 px-6 rounded-full bg-blue-700 text-white font-medium hover:bg-blue-800 transition-all shadow-lg shadow-blue-700/20"
+              >
+                <Plus className="w-5 h-5" />
+                New Resume
+              </button>
+            </div>
           </div>
 
           {resumes.length === 0 ? (

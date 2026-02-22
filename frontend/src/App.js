@@ -8,6 +8,7 @@ import ResumeBuilder from './pages/ResumeBuilder';
 import ATSAnalysis from './pages/ATSAnalysis';
 import Pricing from './pages/Pricing';
 import Success from './pages/Success';
+import BatchGenerate from './pages/BatchGenerate';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -99,6 +100,10 @@ function App() {
           <Route
             path="/success"
             element={user ? <Success /> : <Navigate to="/" />}
+          />
+          <Route
+            path="/batch-generate"
+            element={user ? <BatchGenerate /> : <Navigate to="/" />}
           />
         </Routes>
       </BrowserRouter>

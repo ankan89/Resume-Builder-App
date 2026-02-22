@@ -25,12 +25,11 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(
-    mongo_url,
-    tls=True,
-    tlsAllowInvalidCertificates=True,
-    serverSelectionTimeoutMS=10000,
-)
+_use_tls = 'mongodb+srv' in mongo_url or 'mongodb.net' in mongo_url
+_mongo_kwargs = dict(serverSelectionTimeoutMS=10000)
+if _use_tls:
+    _mongo_kwargs.update(tls=True, tlsAllowInvalidCertificates=True)
+client = AsyncIOMotorClient(mongo_url, **_mongo_kwargs)
 db = client[os.environ['DB_NAME']]
 
 # Security
@@ -90,6 +89,8 @@ class Resume(BaseModel):
     title: str
     template: str = "modern"
     sections: List[ResumeSection] = []
+    job_profile: Optional[str] = None
+    batch_generated: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -102,6 +103,31 @@ class ResumeUpdate(BaseModel):
     title: Optional[str] = None
     template: Optional[str] = None
     sections: Optional[List[ResumeSection]] = None
+
+class ExperienceEntry(BaseModel):
+    position: str
+    company: str
+    duration: str
+    description: str
+
+class EducationEntry(BaseModel):
+    degree: str
+    institution: str
+    year: str
+    details: Optional[str] = ""
+
+class BatchGenerateRequest(BaseModel):
+    personal_info: Dict[str, str]       # name, email, phone, location
+    summary_base: str
+    experience: List[ExperienceEntry]
+    education: List[EducationEntry]
+    skills_base: str
+    job_profiles: List[str]             # preset IDs, max 5
+    template: str = "modern"
+
+class BatchGenerateResponse(BaseModel):
+    resumes: List[Dict[str, Any]]
+    generation_stats: Dict[str, Any]
 
 class ATSAnalysis(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -147,6 +173,119 @@ class PaymentStatusResponse(BaseModel):
     session_id: str
     status: str
     payment_status: str
+
+JOB_PROFILE_PRESETS = {
+    "software_engineer": {
+        "id": "software_engineer",
+        "title": "Software Engineer",
+        "keywords": ["algorithms", "data structures", "REST APIs", "microservices", "CI/CD", "agile", "code review", "system design", "unit testing", "version control"],
+        "summary_focus": "software development expertise, problem-solving, and building scalable applications",
+        "skills_categories": ["Programming Languages", "Frameworks", "Databases", "DevOps Tools", "Testing"]
+    },
+    "data_scientist": {
+        "id": "data_scientist",
+        "title": "Data Scientist",
+        "keywords": ["machine learning", "statistical analysis", "Python", "R", "deep learning", "NLP", "data visualization", "A/B testing", "feature engineering", "big data"],
+        "summary_focus": "data-driven decision making, statistical modeling, and extracting insights from complex datasets",
+        "skills_categories": ["ML Frameworks", "Programming", "Statistics", "Data Tools", "Visualization"]
+    },
+    "product_manager": {
+        "id": "product_manager",
+        "title": "Product Manager",
+        "keywords": ["product strategy", "roadmap", "user research", "agile", "stakeholder management", "KPIs", "market analysis", "prioritization", "cross-functional", "product lifecycle"],
+        "summary_focus": "product vision, cross-functional leadership, and driving product-market fit",
+        "skills_categories": ["Product Strategy", "Analytics", "Communication", "Technical", "Leadership"]
+    },
+    "ux_designer": {
+        "id": "ux_designer",
+        "title": "UX Designer",
+        "keywords": ["user research", "wireframing", "prototyping", "usability testing", "design systems", "Figma", "user flows", "accessibility", "interaction design", "information architecture"],
+        "summary_focus": "user-centered design, creating intuitive interfaces, and improving user experience",
+        "skills_categories": ["Design Tools", "Research Methods", "UI Design", "Prototyping", "Accessibility"]
+    },
+    "marketing_manager": {
+        "id": "marketing_manager",
+        "title": "Marketing Manager",
+        "keywords": ["digital marketing", "SEO", "content strategy", "brand management", "campaign management", "analytics", "social media", "lead generation", "marketing automation", "ROI optimization"],
+        "summary_focus": "strategic marketing, brand growth, and data-driven campaign optimization",
+        "skills_categories": ["Digital Marketing", "Analytics", "Content", "Advertising", "Strategy"]
+    },
+    "project_manager": {
+        "id": "project_manager",
+        "title": "Project Manager",
+        "keywords": ["project planning", "risk management", "budget management", "stakeholder communication", "agile", "scrum", "resource allocation", "milestone tracking", "PMP", "cross-functional teams"],
+        "summary_focus": "project delivery, team coordination, and managing complex initiatives on time and within budget",
+        "skills_categories": ["Project Management", "Methodologies", "Tools", "Leadership", "Risk Management"]
+    },
+    "devops_engineer": {
+        "id": "devops_engineer",
+        "title": "DevOps Engineer",
+        "keywords": ["CI/CD", "Docker", "Kubernetes", "AWS", "infrastructure as code", "monitoring", "automation", "Linux", "Terraform", "cloud architecture"],
+        "summary_focus": "infrastructure automation, deployment pipelines, and ensuring system reliability at scale",
+        "skills_categories": ["Cloud Platforms", "Containerization", "IaC Tools", "Monitoring", "Scripting"]
+    },
+    "data_analyst": {
+        "id": "data_analyst",
+        "title": "Data Analyst",
+        "keywords": ["SQL", "data visualization", "Excel", "Tableau", "Power BI", "statistical analysis", "ETL", "reporting", "data cleaning", "business intelligence"],
+        "summary_focus": "transforming data into actionable business insights through analysis and visualization",
+        "skills_categories": ["Analytics Tools", "Databases", "Visualization", "Statistics", "Reporting"]
+    }
+}
+
+RESUME_GENERATION_SYSTEM_PROMPT = """You are an expert resume writer and ATS optimization specialist. Given a user's base information and a target job profile, generate an optimized resume tailored for that role.
+
+Return your response as JSON only with these keys:
+- summary: A 2-3 sentence professional summary optimized for the target role
+- skills: A comma-separated string of relevant skills (mix user's existing skills with role-specific ones)
+- experience: An array of objects with keys: position, company, duration, description (enhance descriptions with role-relevant keywords and achievements)
+- education: An array of objects with keys: degree, institution, year, details (keep as-is but add relevant coursework if applicable)"""
+
+def build_resume_generation_prompt(personal_info, summary_base, experience, education, skills_base, profile):
+    exp_text = "\n".join([f"- {e['position']} at {e['company']} ({e['duration']}): {e['description']}" for e in experience])
+    edu_text = "\n".join([f"- {e['degree']} from {e['institution']} ({e['year']})" for e in education])
+
+    return f"""Optimize this resume for a {profile['title']} position.
+
+TARGET ROLE KEYWORDS: {', '.join(profile['keywords'])}
+SUMMARY FOCUS: {profile['summary_focus']}
+SKILLS CATEGORIES: {', '.join(profile['skills_categories'])}
+
+USER'S BASE INFORMATION:
+Name: {personal_info.get('name', '')}
+Current Summary: {summary_base}
+Skills: {skills_base}
+
+Experience:
+{exp_text}
+
+Education:
+{edu_text}
+
+Generate an ATS-optimized resume. Enhance the content with relevant keywords naturally woven in. Keep factual information accurate but improve descriptions. Return JSON only."""
+
+
+async def call_groq_generate(prompt: str) -> dict:
+    groq_client = AsyncGroq(api_key=GROQ_API_KEY)
+    response = await groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": RESUME_GENERATION_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.4,
+        max_tokens=3000
+    )
+    return parse_ai_response(response.choices[0].message.content)
+
+
+async def call_gemini_generate(prompt: str) -> dict:
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    response = await asyncio.to_thread(
+        model.generate_content,
+        f"{RESUME_GENERATION_SYSTEM_PROMPT}\n\n{prompt}"
+    )
+    return parse_ai_response(response.text)
 
 # ========== AUTH HELPERS ==========
 
@@ -250,6 +389,135 @@ async def get_resumes(current_user: User = Depends(get_current_user)):
         if isinstance(resume.get('updated_at'), str):
             resume['updated_at'] = datetime.fromisoformat(resume['updated_at'])
     return resumes
+
+# ========== BATCH GENERATION ROUTES ==========
+
+@api_router.get("/resumes/job-profiles")
+async def get_job_profiles(current_user: User = Depends(get_current_user)):
+    profiles = [
+        {"id": k, "title": v["title"], "keywords": v["keywords"], "summary_focus": v["summary_focus"], "skills_categories": v["skills_categories"]}
+        for k, v in JOB_PROFILE_PRESETS.items()
+    ]
+    return profiles
+
+
+@api_router.post("/resumes/batch-generate", response_model=BatchGenerateResponse)
+async def batch_generate_resumes(request: BatchGenerateRequest, current_user: User = Depends(get_current_user)):
+    # Validate max 5 profiles
+    if len(request.job_profiles) > 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 job profiles allowed per batch")
+    if len(request.job_profiles) == 0:
+        raise HTTPException(status_code=400, detail="At least one job profile is required")
+
+    # Validate profile IDs
+    for profile_id in request.job_profiles:
+        if profile_id not in JOB_PROFILE_PRESETS:
+            raise HTTPException(status_code=400, detail=f"Invalid job profile: {profile_id}")
+
+    # Check free tier limits
+    if not current_user.is_premium:
+        existing_count = await db.resumes.count_documents({"user_id": current_user.id})
+        if existing_count + len(request.job_profiles) > 5:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Free tier limit: you have {existing_count} resumes and can create {max(0, 5 - existing_count)} more. Upgrade to premium for unlimited resumes."
+            )
+
+    experience_dicts = [e.model_dump() for e in request.experience]
+    education_dicts = [e.model_dump() for e in request.education]
+
+    async def generate_single_resume(profile_id: str) -> dict:
+        profile = JOB_PROFILE_PRESETS[profile_id]
+        prompt = build_resume_generation_prompt(
+            request.personal_info, request.summary_base,
+            experience_dicts, education_dicts,
+            request.skills_base, profile
+        )
+
+        ai_result = None
+        ai_provider = None
+
+        # Try Groq first (faster)
+        try:
+            ai_result = await call_groq_generate(prompt)
+            ai_provider = "groq"
+        except Exception as e:
+            logging.error(f"Groq generation failed for {profile_id}: {str(e)}")
+
+        # Fallback to Gemini
+        if ai_result is None:
+            try:
+                ai_result = await call_gemini_generate(prompt)
+                ai_provider = "gemini"
+            except Exception as e:
+                logging.error(f"Gemini generation failed for {profile_id}: {str(e)}")
+                return None
+
+        # Build resume sections from AI output
+        sections = []
+
+        # Personal info section
+        sections.append(ResumeSection(type="personal", content=request.personal_info))
+
+        # Summary
+        sections.append(ResumeSection(type="summary", content=ai_result.get("summary", request.summary_base)))
+
+        # Experience
+        ai_experience = ai_result.get("experience", experience_dicts)
+        for exp in ai_experience:
+            sections.append(ResumeSection(type="experience", content=exp))
+
+        # Education
+        ai_education = ai_result.get("education", education_dicts)
+        for edu in ai_education:
+            sections.append(ResumeSection(type="education", content=edu))
+
+        # Skills
+        sections.append(ResumeSection(type="skills", content=ai_result.get("skills", request.skills_base)))
+
+        resume = Resume(
+            user_id=current_user.id,
+            title=f"{request.personal_info.get('name', 'Resume')} - {profile['title']}",
+            template=request.template,
+            sections=sections,
+            job_profile=profile_id,
+            batch_generated=True
+        )
+
+        resume_dict = resume.model_dump()
+        resume_dict['created_at'] = resume_dict['created_at'].isoformat()
+        resume_dict['updated_at'] = resume_dict['updated_at'].isoformat()
+        await db.resumes.insert_one(resume_dict)
+
+        return {"resume": resume_dict, "provider": ai_provider, "profile_id": profile_id}
+
+    # Run all generations in parallel
+    results = await asyncio.gather(*[generate_single_resume(pid) for pid in request.job_profiles])
+
+    successful = [r for r in results if r is not None]
+    failed = [request.job_profiles[i] for i, r in enumerate(results) if r is None]
+
+    # Fix datetime fields for response
+    resume_list = []
+    for r in successful:
+        res = r["resume"]
+        if isinstance(res.get('created_at'), str):
+            res['created_at'] = datetime.fromisoformat(res['created_at'])
+        if isinstance(res.get('updated_at'), str):
+            res['updated_at'] = datetime.fromisoformat(res['updated_at'])
+        resume_list.append(res)
+
+    return BatchGenerateResponse(
+        resumes=resume_list,
+        generation_stats={
+            "total_requested": len(request.job_profiles),
+            "successful": len(successful),
+            "failed": len(failed),
+            "failed_profiles": failed,
+            "providers_used": {r["profile_id"]: r["provider"] for r in successful}
+        }
+    )
+
 
 @api_router.get("/resumes/{resume_id}", response_model=Resume)
 async def get_resume(resume_id: str, current_user: User = Depends(get_current_user)):
