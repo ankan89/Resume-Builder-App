@@ -1,6 +1,6 @@
 # Project Tracker: Emergent Cloud → Vercel + Render + MongoDB Atlas Migration
 
-> **Last updated:** 2026-02-22
+> **Last updated:** 2026-02-22 (Session 2 — Deployment Phase)
 > **Purpose:** Resume point if token/session runs out. Each task has a status so the next session picks up exactly where we left off.
 
 ---
@@ -9,8 +9,9 @@
 
 ### 1.1 Update `backend/requirements.txt`
 - **Status:** DONE ✅ VERIFIED
-- **What was done:** Trimmed from 126 → 42 packages. Removed `emergentintegrations`, `boto3`, `botocore`, `s3transfer`, `huggingface_hub`, `litellm`, `pandas`, `numpy`, `pillow`, `tiktoken`, `tokenizers`, and all unused heavy deps. Added `groq==0.25.0`.
-- **Verification:** All server.py imports satisfied by requirements.txt (cross-referenced by agent).
+- **What was done:** Simplified to 13 top-level deps with flexible version ranges (was 126 pinned packages). Removed `emergentintegrations` and all unused heavy packages. Let pip resolve transitive deps to avoid version conflicts.
+- **Final deps:** `fastapi`, `uvicorn`, `motor`, `pymongo`, `pydantic[email]`, `PyJWT`, `passlib[bcrypt]`, `python-dotenv`, `python-multipart`, `google-generativeai`, `groq`, `stripe`, `httpx`
+- **Build fix applied:** Originally had exact pinned versions that conflicted on Python 3.14 (grpcio-status vs google-api-core). Switched to flexible ranges + pinned Python 3.11.6.
 
 ### 1.2 Replace LLM Integration in `backend/server.py`
 - **Status:** DONE ✅ VERIFIED
@@ -67,61 +68,81 @@
 
 ### 2.3 Create `frontend/src/components/AdSense.js`
 - **Status:** DONE ✅ VERIFIED
-- **What was done:** Reusable component with props: `slot`, `format` (default 'auto'), `responsive` (default true), `className`. Uses `useEffect` + `useRef` to push adsbygoogle once. Displays "Advertisement" label.
 
 ### 2.4 Replace Ad Placeholders with AdSense Component
 - **Status:** DONE ✅ VERIFIED
-- **Files updated:**
-  - `pages/ATSAnalysis.js` — `<AdSense slot="ats-input-ad" />` (hidden for premium)
-  - `pages/Pricing.js` — `<AdSense slot="pricing-ad" />` (hidden for premium)
-  - `pages/Dashboard.js` — `<AdSense slot="dashboard-ad" />` (hidden for premium)
+- **Files:** ATSAnalysis.js, Pricing.js, Dashboard.js — all hidden for premium users
 
 ### 2.5 Create `frontend/src/components/AffiliateLinks.js`
 - **Status:** DONE ✅ VERIFIED
-- **What was done:** Component with 4 curated links (TopResume, LinkedIn Premium, Coursera, Indeed). `rel="noopener noreferrer sponsored"`. Props: `layout` ('horizontal' or 'vertical'). Horizontal = 4-col grid, Vertical = stacked.
 
 ### 2.6 Add Affiliate Links to Pages
 - **Status:** DONE ✅ VERIFIED
-- **Files updated:**
-  - `pages/LandingPage.js` — In footer section, above copyright
-  - `pages/Pricing.js` — Below AdSense ad
-  - `pages/Dashboard.js` — Below Recent ATS Analyses section
+- **Files:** LandingPage.js (footer), Pricing.js (below ad), Dashboard.js (below analyses)
 
 ---
 
 ## Phase 3: Deployment Configuration
 
-### 3.1 Create `frontend/vercel.json`
-- **Status:** DONE ✅ VERIFIED
-- **Content:** SPA rewrite rule `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }`
+### 3.1 `frontend/vercel.json`
+- **Status:** DONE ✅
+- **Content:** SPA rewrite rule + `installCommand: yarn install` + `buildCommand: yarn build`
 
-### 3.2 Create `backend/Procfile`
-- **Status:** DONE ✅ VERIFIED
+### 3.2 `backend/Procfile`
+- **Status:** DONE ✅
 - **Content:** `web: uvicorn server:app --host 0.0.0.0 --port $PORT`
 
-### 3.3 Create `backend/render.yaml`
+### 3.3 `backend/render.yaml`
 - **Status:** DONE ✅
-- **Content:** Full Render IaC config with service definition, build/start commands, health check path, and all env var declarations (some auto-generated like JWT_SECRET, others marked sync:false for manual entry).
+- **Content:** Full Render IaC config, Python 3.11.6 pinned, health check at `/health`
+
+### 3.4 `backend/.python-version`
+- **Status:** DONE ✅
+- **Content:** `3.11.6` — ensures Render uses Python 3.11 not 3.14
+
+### 3.5 `frontend/.npmrc`
+- **Status:** DONE ✅
+- **Content:** `legacy-peer-deps=true`
+
+### 3.6 `frontend/.nvmrc`
+- **Status:** DONE ✅
+- **Content:** `20` — pins Node 20.x on Vercel
 
 ---
 
-## Phase 4: Environment Variables Setup
+## Phase 4: Deployment Progress
 
-### Vercel (Frontend)
-- **Status:** MANUAL — Must be set in Vercel dashboard after deployment
-- `REACT_APP_BACKEND_URL` = `https://<your-app>.onrender.com`
+### Frontend (Vercel) — DEPLOYED ✅
+- **URL:** `https://resume-builder-app-mu-seven.vercel.app`
+- **Status:** Live and serving the React app
+- **Build fixes applied (in order):**
+  1. `date-fns` downgraded from v4 → v3 (react-day-picker peer dep conflict)
+  2. `.npmrc` added with `legacy-peer-deps=true`
+  3. `.nvmrc` + `engines` field to pin Node 20.x (Node 24 incompatible with CRA)
+  4. `--openssl-legacy-provider` added to build script (Node 20 + webpack 4)
+  5. Yarn `resolutions` for `react-scripts/ajv@6.12.6` and `react-scripts/ajv-keywords@3.5.2` (MODULE_NOT_FOUND fix)
+  6. `CI=false` in build command (ESLint warnings treated as errors)
+- **Env var needed:** `REACT_APP_BACKEND_URL` = `https://resumebuilder-api.onrender.com` (set after backend deploys, then redeploy)
 
-### Render (Backend)
-- **Status:** MANUAL — Must be set in Render dashboard (or via render.yaml Blueprint)
-- `MONGO_URL` — MongoDB Atlas connection string
-- `DB_NAME` — `resume_builder`
-- `JWT_SECRET` — Secure random string (32+ chars) — auto-generated if using render.yaml
-- `GEMINI_API_KEY` — From Google AI Studio (free)
-- `GROQ_API_KEY` — From Groq Cloud console (free)
-- `STRIPE_API_KEY` — From Stripe dashboard
-- `STRIPE_WEBHOOK_SECRET` — From Stripe webhook settings
-- `CORS_ORIGINS` — `https://<your-app>.vercel.app`
-- `FRONTEND_URL` — `https://<your-app>.vercel.app`
+### Backend (Render) — IN PROGRESS 🔄
+- **Service name:** `resumebuilder-api`
+- **Expected URL:** `https://resumebuilder-api.onrender.com`
+- **Status:** Service created, build in progress. Last build failed due to Python 3.14 grpcio conflict — fixed by simplifying requirements.txt to flexible ranges + pinning Python 3.11.6.
+- **IMPORTANT:** If service was created manually (not via Blueprint), ensure `PYTHON_VERSION=3.11.6` env var is set in Render dashboard.
+- **Env vars to set on Render:**
+
+| Variable | Value | Status |
+|----------|-------|--------|
+| `MONGO_URL` | MongoDB Atlas connection string | User needs to provide |
+| `DB_NAME` | `resume_builder` | Set |
+| `JWT_SECRET` | Secure random 32+ char string | Auto-generated if Blueprint, else set manually |
+| `GEMINI_API_KEY` | From Google AI Studio | User needs to provide |
+| `GROQ_API_KEY` | From Groq Cloud | User needs to provide |
+| `STRIPE_API_KEY` | From Stripe dashboard (test mode `sk_test_...`) | User needs to provide |
+| `STRIPE_WEBHOOK_SECRET` | Can be empty for now | Skip for now |
+| `CORS_ORIGINS` | `https://resume-builder-app-mu-seven.vercel.app` | Set |
+| `FRONTEND_URL` | `https://resume-builder-app-mu-seven.vercel.app` | Set |
+| `PYTHON_VERSION` | `3.11.6` | CRITICAL — must be set |
 
 ---
 
@@ -133,14 +154,14 @@
 - [x] Frontend HTML agent verification: All checks passed (clean HTML, AdSense, no emergent)
 - [x] Frontend components agent verification: All checks passed (AdSense.js, AffiliateLinks.js)
 - [x] Frontend pages agent verification: 23/23 checks passed (dual scores, ads, affiliates)
+- [x] Frontend Vercel deployment: Build succeeds, app is live
 
 ### Manual checks remaining
-- [ ] Frontend build: Node.js not available on current machine — run `yarn build` or `npm run build` in `frontend/` to verify
-- [ ] Backend locally: `pip install -r requirements.txt && uvicorn server:app --reload` — test `/health`, `/api/auth/register`, `/api/ats/analyze`
-- [ ] Frontend locally: `yarn start` — verify dual scores, ads, affiliate links
-- [ ] Deploy backend to Render — verify health check
-- [ ] Deploy frontend to Vercel — set `REACT_APP_BACKEND_URL`
+- [ ] Backend Render deployment: Waiting for successful build with Python 3.11.6
+- [ ] Backend health check: Visit `https://resumebuilder-api.onrender.com/health` → expect `{"status":"ok"}`
+- [ ] Set `REACT_APP_BACKEND_URL` on Vercel → redeploy frontend
 - [ ] End-to-end: Register → Resume → ATS analysis → Dual scores → Payment → Ads
+- [ ] Stripe webhook setup: Create webhook in Stripe pointing to `https://resumebuilder-api.onrender.com/api/webhook/stripe`
 - [ ] Replace AdSense `ca-pub-XXXXXXXX` placeholder with real publisher ID after AdSense approval
 - [ ] Replace affiliate placeholder URLs with actual tracking URLs
 
@@ -150,12 +171,16 @@
 
 | File | Status | Action |
 |------|--------|--------|
-| `backend/requirements.txt` | DONE ✅ | Trimmed from 126→42 packages, added groq |
-| `backend/server.py` | DONE ✅ | Full rewrite: dual AI + direct Stripe + health check. Syntax verified. |
+| `backend/requirements.txt` | DONE ✅ | Simplified to 13 top-level deps with flexible ranges |
+| `backend/server.py` | DONE ✅ | Full rewrite: dual AI + direct Stripe + health check |
 | `backend/Procfile` | DONE ✅ | Created for Render |
-| `backend/render.yaml` | DONE ✅ | Created — Render IaC with env var declarations |
+| `backend/render.yaml` | DONE ✅ | Render IaC with Python 3.11.6 pinned |
+| `backend/.python-version` | DONE ✅ | Pins Python 3.11.6 on Render |
 | `frontend/public/index.html` | DONE ✅ | Cleaned Emergent, added AdSense script |
-| `frontend/vercel.json` | DONE ✅ | Created for SPA routing |
+| `frontend/vercel.json` | DONE ✅ | SPA routing + install/build commands |
+| `frontend/.npmrc` | DONE ✅ | `legacy-peer-deps=true` |
+| `frontend/.nvmrc` | DONE ✅ | Pins Node 20.x |
+| `frontend/package.json` | DONE ✅ | date-fns v3, Node 20 engine, CI=false build, ajv resolutions |
 | `frontend/src/components/AdSense.js` | DONE ✅ | Created — reusable ad component |
 | `frontend/src/components/AffiliateLinks.js` | DONE ✅ | Created — career resource links |
 | `frontend/src/pages/ATSAnalysis.js` | DONE ✅ | Dual score UI, AdSense |
@@ -165,15 +190,30 @@
 
 ---
 
+## Git Commit History (this session)
+
+1. `873ffb7` — Main migration commit (all code changes)
+2. `855ed9f` — Fix: downgrade date-fns v4→v3 for react-day-picker
+3. `dd8fbd3` — Fix: pin Node 18.x (later changed to 20.x)
+4. `ca3897b` — Fix: pin Node to 20.x (lowest available on Vercel)
+5. `9b07459` — Fix: ajv resolutions (first attempt — wrong versions)
+6. `a3070e7` — Fix: correct ajv resolutions to v6 + scoped schema-utils
+7. `45d6b11` — Fix: scope ajv resolutions to react-scripts only, remove schema-utils
+8. `266daaf` — Fix: CI=false to treat ESLint warnings as warnings
+9. `b29c2b2` — Fix: simplify backend requirements + pin Python 3.11.6
+
+---
+
 ## Remaining Work (pick up here if session ended)
 
-All code changes are COMPLETE and VERIFIED. What remains is manual deployment:
+### IMMEDIATE NEXT STEPS:
+1. **Wait for Render backend build** — should succeed now with Python 3.11.6 + simplified deps
+2. **Verify backend health:** `https://resumebuilder-api.onrender.com/health` → `{"status":"ok"}`
+3. **Set Vercel env var:** `REACT_APP_BACKEND_URL` = `https://resumebuilder-api.onrender.com` → redeploy frontend
+4. **Test end-to-end flow** in browser
 
-1. **Frontend build test** — Run `yarn install && yarn build` in `frontend/` (needs Node.js)
-2. **MongoDB Atlas** — Create free M0 cluster, get connection string
-3. **API Keys** — Get free keys from Google AI Studio (Gemini) and Groq Cloud
-4. **Deploy backend to Render** — Connect repo, set root dir to `backend`, add env vars
-5. **Deploy frontend to Vercel** — Connect repo, set root dir to `frontend`, set `REACT_APP_BACKEND_URL`
-6. **Stripe webhook** — Update webhook URL to point to Render backend
-7. **AdSense** — Apply for Google AdSense, replace `ca-pub-XXXXXXXX` when approved
-8. **Affiliate links** — Sign up for affiliate programs, replace URLs with tracking links
+### LATER:
+5. **Stripe webhook** — Create endpoint in Stripe dashboard pointing to backend
+6. **AdSense** — Apply for Google AdSense, replace `ca-pub-XXXXXXXX` when approved
+7. **Affiliate links** — Sign up for affiliate programs, replace placeholder URLs
+8. **Render cold starts** — Consider cron ping service to keep free tier warm (first request after 15min inactivity takes ~30s)
