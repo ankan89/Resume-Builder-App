@@ -11,3 +11,4 @@ google-generativeai>=0.8,<1
 groq>=0.25,<1
 stripe>=14,<15
 httpx>=0.28,<1
+certifi
