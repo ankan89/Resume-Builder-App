@@ -1,6 +1,6 @@
-# Project Tracker: Emergent Cloud → Vercel + Render + MongoDB Atlas Migration
+# Project Tracker: CareerArchitect — Resume Builder App
 
-> **Last updated:** 2026-02-23 (Session 3 — AI Batch Resume Generation Feature)
+> **Last updated:** 2026-02-23 (Session 3 — AI Batch Resume Generation — DEPLOYED)
 > **Purpose:** Resume point if token/session runs out. Each task has a status so the next session picks up exactly where we left off.
 
 ---
@@ -260,24 +260,140 @@
 
 ---
 
+### 6.5 Deployment — Status: DONE ✅
+
+- **Git commit:** `ae713ea` — "Add AI batch resume generation: 5 profiles, parallel AI, 3-step wizard"
+- **Pushed to:** `origin/main` on GitHub (`ankan89/Resume-Builder-App`)
+- **Both platforms have GitHub auto-deploy enabled** — push triggers rebuild automatically
+
+**Vercel (Frontend):**
+- Auto-deployed from push — status: **Ready** ✅
+- Production URL: `https://resume-builder-app-mu-seven.vercel.app`
+- Build: compiled successfully (only pre-existing eslint dep warnings)
+- Note: Vercel CLI was installed and logged in (`vercel login`). Do NOT use `vercel --prod` from `frontend/` — it creates a duplicate project. The existing project is connected via Vercel dashboard GitHub integration.
+
+**Render (Backend):**
+- Auto-deployed from push — status: **Live** ✅
+- Production URL: `https://rdsumebuilder-api.onrender.com`
+- Verified: `GET /api/resumes/job-profiles` returns all 8 profiles on production
+- AI keys (`GEMINI_API_KEY`, `GROQ_API_KEY`) already configured on Render — batch generation should work with real AI
+
+### 6.6 Local Development Setup (created this session)
+
+**`backend/.env`** (gitignored):
+```
+MONGO_URL=mongodb://localhost:27017/?tls=false
+DB_NAME=resume_builder
+JWT_SECRET=test-secret-key-local
+GEMINI_API_KEY=        # empty — AI calls fail gracefully
+GROQ_API_KEY=          # empty — AI calls fail gracefully
+STRIPE_API_KEY=
+STRIPE_WEBHOOK_SECRET=
+FRONTEND_URL=http://localhost:3000
+CORS_ORIGINS=http://localhost:3000
+```
+
+**`frontend/.env`** (gitignored):
+```
+REACT_APP_BACKEND_URL=http://localhost:8001
+```
+
+**Local dependencies installed:**
+- MongoDB Community (via `brew install mongodb-community`) — start with: `mongod --dbpath /tmp/mongodb_test --port 27017 &`
+- Backend: `pip3 install -r requirements.txt` → run with `python3 -m uvicorn server:app --host 0.0.0.0 --port 8001`
+- Frontend: `npm install` (+ `npm install ajv@8` to fix craco dep) → run with `npm start` on port 3000
+- Vercel CLI: installed globally (`npm i -g vercel`), logged in
+
+---
+
 ## Git Commit History
 
-1–15. *(Previous commits — see above)*
+1. `873ffb7` — Main migration commit (all code changes)
+2. `855ed9f` — Fix: date-fns v4→v3 for react-day-picker
+3. `dd8fbd3` — Fix: pin Node 18 (later changed)
+4. `ca3897b` — Fix: pin Node 20
+5. `9b07459` — Fix: ajv resolutions (wrong versions)
+6. `a3070e7` — Fix: correct ajv resolutions to v6
+7. `45d6b11` — Fix: scope ajv resolutions to react-scripts only
+8. `266daaf` — Fix: CI=false for ESLint warnings
+9. `b29c2b2` — Fix: simplify backend requirements + pin Python 3.11.6
+10. `de319fa` — Update project tracker
+11. `d4ddf71` — Fix: MongoDB SSL with certifi
+12. `33fd9dd` — Fix: upgrade pymongo/motor for TLS
+13. `123a0b6` — Fix: tlsAllowInvalidCertificates workaround
+14. `bbe19a1` — Fix: pin bcrypt==4.0.1 for passlib
+15. `748c20d` — Fix: replace passlib with direct bcrypt
+16. `0ee1240` — Update project tracker: deployment complete, registration working
+17. `ae713ea` — **Add AI batch resume generation** (Session 3)
+
+---
+
+## Session History & AI Models Used
+
+| Session | Date | Work Done | Primary Model | Subagents |
+|---------|------|-----------|---------------|-----------|
+| 1 | 2026-02-22 | Emergent → Vercel/Render migration, dual AI, deployment fixes | Claude | — |
+| 2 | 2026-02-22 | Deployment complete, registration verified | Claude | — |
+| 3 | 2026-02-23 | AI Batch Resume Generation feature (plan → implement → test → deploy) | **Claude Opus 4.6** | 4 parallel (see §6.1) |
+
+**Session 3 subagent details:**
+- **Orchestrator:** Claude Opus 4.6 — planning, coordination, testing, deployment
+- **Agent 1 (Sonnet):** Backend `server.py` — all models, presets, AI callers, endpoints (~35.6k tokens, 91s)
+- **Agent 2 (Sonnet):** Frontend `BatchGenerate.js` — full 3-step wizard component (~24.1k tokens, 120s)
+- **Agent 3 (Haiku):** Frontend `App.js` — 2-line edit: import + route (~14.4k tokens, 8s)
+- **Agent 4 (Haiku):** Frontend `Dashboard.js` — 2-line edit: import + button (~17.9k tokens, 11s)
+
+**Cost optimization strategy:** Sonnet for complex multi-edit tasks, Haiku for trivial edits. All 4 ran in parallel (independent files).
+
+---
+
+## Current App Architecture
+
+```
+Frontend (Vercel)                    Backend (Render)                  Database
+┌─────────────────────┐    API     ┌─────────────────────┐          ┌──────────┐
+│ React + Tailwind    │ ────────→ │ FastAPI + Uvicorn    │ ───────→ │ MongoDB  │
+│ react-router-dom    │           │ Pydantic models      │          │ Atlas    │
+│ axios, lucide-react │           │ Dual AI (Groq+Gemini)│          └──────────┘
+│ recharts            │           │ Stripe payments      │
+└─────────────────────┘           │ JWT auth + bcrypt    │
+                                  └─────────────────────┘
+Pages:
+  / ................ LandingPage.js
+  /dashboard ....... Dashboard.js        (resume list, stats, ATS history)
+  /builder/:id ..... ResumeBuilder.js    (create/edit resume)
+  /ats/:resumeId ... ATSAnalysis.js      (dual Gemini+Groq ATS scoring)
+  /batch-generate .. BatchGenerate.js    (NEW — 3-step AI multi-resume wizard)
+  /pricing ......... Pricing.js          (Stripe checkout)
+  /success ......... Success.js          (payment confirmation)
+
+API Endpoints:
+  POST /api/auth/register          POST /api/auth/login           GET  /api/auth/me
+  GET  /api/resumes                POST /api/resumes              GET  /api/resumes/{id}
+  PUT  /api/resumes/{id}           DELETE /api/resumes/{id}
+  GET  /api/resumes/job-profiles   POST /api/resumes/batch-generate    (NEW)
+  POST /api/ats/analyze            GET  /api/ats/analyses
+  POST /api/payments/checkout      GET  /api/payments/status/{id}
+  POST /api/webhook/stripe
+```
 
 ---
 
 ## Remaining Work (pick up here if session ended)
 
 ### IMMEDIATE:
-1. **Deploy batch-generate to production** — Push changes, redeploy backend on Render + frontend on Vercel
-2. **Add AI API keys to local .env** — Test actual AI resume generation end-to-end
-3. **Test full flow** — Login → Create Resume → ATS Analysis → see dual Gemini/Groq scores
-4. **Test payment** — Click Upgrade → Stripe checkout (test mode)
+1. **Test batch generation with real AI on production** — Login on live site, try batch-generate with real Groq/Gemini keys
+2. **Test full existing flow** — Login → Create Resume → ATS Analysis → see dual Gemini/Groq scores
+3. **Test payment** — Click Upgrade → Stripe checkout (test mode)
 
-### LATER:
-5. Stripe webhook setup
-6. AdSense approval + real publisher ID
-7. Affiliate tracking URLs
-8. Render cold start ping service
-9. Migrate deprecated `google.generativeai` → `google.genai`
-10. Add loading skeleton states in BatchGenerate Step 2 (profile fetch)
+### ENHANCEMENTS:
+4. Loading skeleton states in BatchGenerate Step 2 (while profiles fetch)
+5. Show batch-generated resumes with a badge/tag on Dashboard
+6. Allow re-generation of failed profiles without re-entering all info
+
+### INFRASTRUCTURE:
+7. Stripe webhook: Create endpoint in Stripe dashboard → `https://rdsumebuilder-api.onrender.com/api/webhook/stripe` → set `STRIPE_WEBHOOK_SECRET` on Render
+8. AdSense: Apply at Google AdSense → replace `ca-pub-XXXXXXXX` in `index.html` and `AdSense.js`
+9. Affiliate links: Sign up for programs → replace placeholder URLs with tracking links
+10. Render cold starts: Consider cron ping to keep free tier warm (15min inactivity = ~30s cold start)
+11. Migrate deprecated `google.generativeai` → `google.genai` (warning on every startup, still works)
