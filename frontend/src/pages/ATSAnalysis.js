@@ -3,9 +3,64 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ArrowLeft, Zap, TrendingUp, AlertCircle, CheckCircle, Crown } from 'lucide-react';
 import { AuthContext } from '../App';
+import AdSense from '../components/AdSense';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+
+const ScoreCard = ({ label, score, theme }) => {
+  const colors = theme === 'purple'
+    ? { text: 'text-purple-700', bg: 'bg-purple-100', bar: 'bg-gradient-to-r from-purple-400 to-purple-600', border: 'border-purple-200' }
+    : { text: 'text-blue-700', bg: 'bg-blue-100', bar: 'bg-gradient-to-r from-blue-400 to-blue-600', border: 'border-blue-200' };
+
+  const scoreColor = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-orange-500' : 'text-red-600';
+
+  return (
+    <div className={`bg-white rounded-2xl p-6 paper-shadow border ${colors.border}`}>
+      <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${colors.text}`}>{label}</div>
+      <div className={`text-5xl font-bold ${scoreColor}`} style={{ fontFamily: 'Outfit' }}>{score}</div>
+      <div className="w-full bg-slate-200 rounded-full h-2 mt-3 overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-1000 ${colors.bar}`} style={{ width: `${score}%` }} />
+      </div>
+    </div>
+  );
+};
+
+const FeedbackSection = ({ title, icon, iconColor, feedback, strengths, improvements }) => (
+  <div className="bg-white rounded-2xl p-6 paper-shadow">
+    <h3 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ fontFamily: 'Outfit' }}>
+      {icon}
+      {title}
+    </h3>
+    {feedback && <p className="text-slate-700 leading-relaxed mb-4">{feedback}</p>}
+    {strengths && strengths.length > 0 && (
+      <div className="mb-4">
+        <h4 className="text-sm font-semibold text-green-700 uppercase tracking-wider mb-2">Strengths</h4>
+        <ul className="space-y-1.5">
+          {strengths.map((s, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-600 mt-1.5 flex-shrink-0" />
+              <span className="text-slate-700">{s}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+    {improvements && improvements.length > 0 && (
+      <div>
+        <h4 className="text-sm font-semibold text-orange-600 uppercase tracking-wider mb-2">Improvements</h4>
+        <ul className="space-y-1.5">
+          {improvements.map((item, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm">
+              <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1.5 flex-shrink-0" />
+              <span className="text-slate-700">{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+  </div>
+);
 
 const ATSAnalysis = () => {
   const { resumeId } = useParams();
@@ -109,7 +164,7 @@ const ATSAnalysis = () => {
             ATS Score Analysis
           </h1>
           <p className="text-lg text-slate-600">
-            Get AI-powered feedback on how well your resume matches job descriptions.
+            Get dual AI-powered feedback from Gemini & Groq on how well your resume matches job descriptions.
           </p>
         </div>
 
@@ -162,14 +217,11 @@ const ATSAnalysis = () => {
               className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Zap className="w-5 h-5" />
-              {loading ? 'Analyzing...' : 'Analyze Resume'}
+              {loading ? 'Analyzing with Gemini & Groq AI...' : 'Analyze Resume'}
             </button>
 
             {/* Ad Space */}
-            <div className="bg-slate-100 border border-slate-200 rounded-2xl p-6 text-center">
-              <div className="text-xs text-slate-500 mb-1">Advertisement</div>
-              <div className="text-slate-400 text-sm">Google AdSense</div>
-            </div>
+            {!user?.is_premium && <AdSense slot="ats-input-ad" className="rounded-2xl overflow-hidden" />}
           </div>
 
           {/* Results Panel */}
@@ -177,29 +229,38 @@ const ATSAnalysis = () => {
             {loading && (
               <div className="bg-white rounded-2xl p-12 paper-shadow text-center">
                 <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-700 mx-auto mb-4"></div>
-                <p className="text-slate-600">Analyzing your resume with AI...</p>
+                <p className="text-slate-600">Analyzing with Gemini & Groq AI...</p>
               </div>
             )}
 
             {analysis && !loading && (
               <div className="space-y-6">
-                {/* Score Card */}
+                {/* Dual Score Cards */}
+                <div className="grid grid-cols-2 gap-4">
+                  {analysis.gemini_score != null && (
+                    <ScoreCard label="Gemini Score" score={analysis.gemini_score} theme="purple" />
+                  )}
+                  {analysis.groq_score != null && (
+                    <ScoreCard label="Groq Score" score={analysis.groq_score} theme="blue" />
+                  )}
+                </div>
+
+                {/* Combined Score */}
                 <div className="bg-white rounded-2xl p-8 paper-shadow text-center">
-                  <div className="mb-4">
-                    <div
-                      className={`text-7xl font-bold ${
-                        analysis.score >= 80 ? 'text-green-600' :
-                        analysis.score >= 60 ? 'text-orange-500' :
-                        'text-red-600'
-                      }`}
-                      style={{ fontFamily: 'Outfit' }}
-                      data-testid="ats-score-display"
-                    >
-                      {analysis.score}
-                    </div>
-                    <div className="text-slate-600 text-lg">ATS Compatibility Score</div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Combined Average</div>
+                  <div
+                    className={`text-7xl font-bold ${
+                      analysis.score >= 80 ? 'text-green-600' :
+                      analysis.score >= 60 ? 'text-orange-500' :
+                      'text-red-600'
+                    }`}
+                    style={{ fontFamily: 'Outfit' }}
+                    data-testid="ats-score-display"
+                  >
+                    {analysis.score}
                   </div>
-                  <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                  <div className="text-slate-600 text-lg">ATS Compatibility Score</div>
+                  <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden mt-4">
                     <div
                       className={`h-full rounded-full transition-all duration-1000 ${
                         analysis.score >= 80 ? 'bg-gradient-to-r from-green-400 to-emerald-600' :
@@ -211,49 +272,73 @@ const ATSAnalysis = () => {
                   </div>
                 </div>
 
-                {/* Feedback */}
-                <div className="bg-white rounded-2xl p-6 paper-shadow">
-                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ fontFamily: 'Outfit' }}>
-                    <TrendingUp className="w-6 h-6 text-blue-700" />
-                    Overall Feedback
-                  </h3>
-                  <p className="text-slate-700 leading-relaxed" data-testid="ats-feedback">{analysis.feedback}</p>
-                </div>
-
-                {/* Strengths */}
-                {analysis.strengths && analysis.strengths.length > 0 && (
-                  <div className="bg-white rounded-2xl p-6 paper-shadow">
-                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ fontFamily: 'Outfit' }}>
-                      <CheckCircle className="w-6 h-6 text-green-600" />
-                      Strengths
-                    </h3>
-                    <ul className="space-y-2">
-                      {analysis.strengths.map((strength, index) => (
-                        <li key={index} className="flex items-start gap-3">
-                          <div className="w-2 h-2 rounded-full bg-green-600 mt-2 flex-shrink-0"></div>
-                          <span className="text-slate-700">{strength}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                {/* Gemini Feedback */}
+                {analysis.gemini_feedback && (
+                  <FeedbackSection
+                    title="Gemini Analysis"
+                    icon={<TrendingUp className="w-6 h-6 text-purple-700" />}
+                    feedback={analysis.gemini_feedback}
+                    strengths={analysis.gemini_strengths}
+                    improvements={analysis.gemini_improvements}
+                  />
                 )}
 
-                {/* Improvements */}
-                {analysis.improvements && analysis.improvements.length > 0 && (
-                  <div className="bg-white rounded-2xl p-6 paper-shadow">
-                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ fontFamily: 'Outfit' }}>
-                      <AlertCircle className="w-6 h-6 text-orange-500" />
-                      Suggestions for Improvement
-                    </h3>
-                    <ul className="space-y-2">
-                      {analysis.improvements.map((improvement, index) => (
-                        <li key={index} className="flex items-start gap-3">
-                          <div className="w-2 h-2 rounded-full bg-orange-500 mt-2 flex-shrink-0"></div>
-                          <span className="text-slate-700">{improvement}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                {/* Groq Feedback */}
+                {analysis.groq_feedback && (
+                  <FeedbackSection
+                    title="Groq Analysis"
+                    icon={<TrendingUp className="w-6 h-6 text-blue-700" />}
+                    feedback={analysis.groq_feedback}
+                    strengths={analysis.groq_strengths}
+                    improvements={analysis.groq_improvements}
+                  />
+                )}
+
+                {/* Fallback: show top-level feedback if no dual data */}
+                {!analysis.gemini_feedback && !analysis.groq_feedback && (
+                  <>
+                    <div className="bg-white rounded-2xl p-6 paper-shadow">
+                      <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ fontFamily: 'Outfit' }}>
+                        <TrendingUp className="w-6 h-6 text-blue-700" />
+                        Overall Feedback
+                      </h3>
+                      <p className="text-slate-700 leading-relaxed" data-testid="ats-feedback">{analysis.feedback}</p>
+                    </div>
+
+                    {analysis.strengths && analysis.strengths.length > 0 && (
+                      <div className="bg-white rounded-2xl p-6 paper-shadow">
+                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ fontFamily: 'Outfit' }}>
+                          <CheckCircle className="w-6 h-6 text-green-600" />
+                          Strengths
+                        </h3>
+                        <ul className="space-y-2">
+                          {analysis.strengths.map((strength, index) => (
+                            <li key={index} className="flex items-start gap-3">
+                              <div className="w-2 h-2 rounded-full bg-green-600 mt-2 flex-shrink-0"></div>
+                              <span className="text-slate-700">{strength}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {analysis.improvements && analysis.improvements.length > 0 && (
+                      <div className="bg-white rounded-2xl p-6 paper-shadow">
+                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2" style={{ fontFamily: 'Outfit' }}>
+                          <AlertCircle className="w-6 h-6 text-orange-500" />
+                          Suggestions for Improvement
+                        </h3>
+                        <ul className="space-y-2">
+                          {analysis.improvements.map((improvement, index) => (
+                            <li key={index} className="flex items-start gap-3">
+                              <div className="w-2 h-2 rounded-full bg-orange-500 mt-2 flex-shrink-0"></div>
+                              <span className="text-slate-700">{improvement}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <button

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FileText, Plus, Target, LogOut, Crown, TrendingUp } from 'lucide-react';
 import { AuthContext } from '../App';
+import AdSense from '../components/AdSense';
+import AffiliateLinks from '../components/AffiliateLinks';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -128,11 +130,12 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Ad Space (Google AdSense Placeholder) */}
-        <div className="bg-slate-100 border border-slate-200 rounded-2xl p-8 mb-12 text-center">
-          <div className="text-sm text-slate-500 mb-2">Advertisement</div>
-          <div className="text-slate-400">Google AdSense Placement</div>
-        </div>
+        {/* Ad Space */}
+        {!user?.is_premium && (
+          <div className="mb-12">
+            <AdSense slot="dashboard-ad" className="rounded-2xl overflow-hidden" />
+          </div>
+        )}
 
         {/* Resumes Section */}
         <div className="mb-12">
@@ -209,7 +212,7 @@ const Dashboard = () => {
 
         {/* Recent ATS Analyses */}
         {analyses.length > 0 && (
-          <div>
+          <div className="mb-12">
             <h2 className="text-3xl font-bold mb-6" style={{ fontFamily: 'Outfit' }}>Recent ATS Analyses</h2>
             <div className="space-y-4">
               {analyses.slice(0, 5).map((analysis) => (
@@ -244,6 +247,11 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+
+        {/* Affiliate Links */}
+        <div className="mb-12">
+          <AffiliateLinks layout="horizontal" />
+        </div>
       </div>
     </div>
   );

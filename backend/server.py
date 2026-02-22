@@ -5,6 +5,8 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import json
+import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Dict, Any
@@ -12,8 +14,9 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
 from passlib.context import CryptContext
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionResponse, CheckoutStatusResponse, CheckoutSessionRequest
+import google.generativeai as genai
+from groq import AsyncGroq
+import stripe
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -27,8 +30,19 @@ db = client[os.environ['DB_NAME']]
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 JWT_SECRET = os.environ.get('JWT_SECRET', 'default-secret-key')
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
-STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY')
+
+# AI API keys
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+
+# Stripe
+stripe.api_key = os.environ.get('STRIPE_API_KEY')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+
+# Configure Gemini
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # Create the main app
 app = FastAPI()
@@ -93,6 +107,14 @@ class ATSAnalysis(BaseModel):
     feedback: str
     strengths: List[str] = []
     improvements: List[str] = []
+    gemini_score: Optional[int] = None
+    gemini_feedback: Optional[str] = None
+    gemini_strengths: List[str] = []
+    gemini_improvements: List[str] = []
+    groq_score: Optional[int] = None
+    groq_feedback: Optional[str] = None
+    groq_strengths: List[str] = []
+    groq_improvements: List[str] = []
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class ATSAnalysisRequest(BaseModel):
@@ -110,6 +132,15 @@ class PaymentTransaction(BaseModel):
     payment_status: str = "initiated"
     metadata: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CheckoutResponse(BaseModel):
+    session_id: str
+    url: str
+
+class PaymentStatusResponse(BaseModel):
+    session_id: str
+    status: str
+    payment_status: str
 
 # ========== AUTH HELPERS ==========
 
@@ -139,6 +170,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+# ========== HEALTH CHECK ==========
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 # ========== AUTH ROUTES ==========
 
 @api_router.post("/auth/register", response_model=TokenResponse)
@@ -146,20 +183,20 @@ async def register(user_data: UserCreate):
     existing = await db.users.find_one({"email": user_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
+
     hashed_pwd = hash_password(user_data.password)
     user = User(
         email=user_data.email,
         full_name=user_data.full_name
     )
-    
+
     user_dict = user.model_dump()
     user_dict['password'] = hashed_pwd
     user_dict['created_at'] = user_dict['created_at'].isoformat()
-    
+
     await db.users.insert_one(user_dict)
     token = create_token(user.id)
-    
+
     return TokenResponse(token=token, user=user)
 
 @api_router.post("/auth/login", response_model=TokenResponse)
@@ -167,13 +204,13 @@ async def login(credentials: UserLogin):
     user_doc = await db.users.find_one({"email": credentials.email}, {"_id": 0})
     if not user_doc:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     if not verify_password(credentials.password, user_doc['password']):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
     user = User(**{k: v for k, v in user_doc.items() if k != 'password'})
     token = create_token(user.id)
-    
+
     return TokenResponse(token=token, user=user)
 
 @api_router.get("/auth/me", response_model=User)
@@ -190,11 +227,11 @@ async def create_resume(resume_data: ResumeCreate, current_user: User = Depends(
         template=resume_data.template,
         sections=resume_data.sections
     )
-    
+
     resume_dict = resume.model_dump()
     resume_dict['created_at'] = resume_dict['created_at'].isoformat()
     resume_dict['updated_at'] = resume_dict['updated_at'].isoformat()
-    
+
     await db.resumes.insert_one(resume_dict)
     return resume
 
@@ -213,12 +250,12 @@ async def get_resume(resume_id: str, current_user: User = Depends(get_current_us
     resume = await db.resumes.find_one({"id": resume_id, "user_id": current_user.id}, {"_id": 0})
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
-    
+
     if isinstance(resume.get('created_at'), str):
         resume['created_at'] = datetime.fromisoformat(resume['created_at'])
     if isinstance(resume.get('updated_at'), str):
         resume['updated_at'] = datetime.fromisoformat(resume['updated_at'])
-    
+
     return Resume(**resume)
 
 @api_router.put("/resumes/{resume_id}", response_model=Resume)
@@ -226,18 +263,18 @@ async def update_resume(resume_id: str, update_data: ResumeUpdate, current_user:
     resume = await db.resumes.find_one({"id": resume_id, "user_id": current_user.id}, {"_id": 0})
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
-    
+
     update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
     if update_dict:
         update_dict['updated_at'] = datetime.now(timezone.utc).isoformat()
         await db.resumes.update_one({"id": resume_id}, {"$set": update_dict})
-    
+
     updated = await db.resumes.find_one({"id": resume_id}, {"_id": 0})
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
     if isinstance(updated.get('updated_at'), str):
         updated['updated_at'] = datetime.fromisoformat(updated['updated_at'])
-    
+
     return Resume(**updated)
 
 @api_router.delete("/resumes/{resume_id}")
@@ -249,31 +286,10 @@ async def delete_resume(resume_id: str, current_user: User = Depends(get_current
 
 # ========== ATS ROUTES ==========
 
-@api_router.post("/ats/analyze", response_model=ATSAnalysis)
-async def analyze_resume(request: ATSAnalysisRequest, current_user: User = Depends(get_current_user)):
-    # Check usage limits
-    if not current_user.is_premium and current_user.ats_checks_used >= current_user.ats_checks_limit:
-        raise HTTPException(status_code=403, detail="ATS check limit reached. Upgrade to premium for unlimited checks.")
-    
-    # Get resume
-    resume = await db.resumes.find_one({"id": request.resume_id, "user_id": current_user.id}, {"_id": 0})
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    
-    # Build resume text
-    resume_text = f"Resume Title: {resume['title']}\n\n"
-    for section in resume.get('sections', []):
-        resume_text += f"{section['type'].upper()}:\n{section['content']}\n\n"
-    
-    # Call GPT-5.2 for ATS analysis
-    try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"ats-{uuid.uuid4()}",
-            system_message="You are an expert ATS (Applicant Tracking System) analyzer. Analyze resumes against job descriptions and provide a score (0-100), detailed feedback, strengths, and improvements. Return response in JSON format with keys: score, feedback, strengths (array), improvements (array)."
-        ).with_model("openai", "gpt-5.2")
-        
-        prompt = f"""Analyze this resume against the job description and provide:
+ATS_SYSTEM_PROMPT = "You are an expert ATS (Applicant Tracking System) analyzer. Analyze resumes against job descriptions and provide a score (0-100), detailed feedback, strengths, and improvements. Return response in JSON format with keys: score, feedback, strengths (array), improvements (array)."
+
+def build_ats_prompt(resume_text: str, job_description: str) -> str:
+    return f"""Analyze this resume against the job description and provide:
 1. ATS Score (0-100)
 2. Overall feedback
 3. List of strengths
@@ -283,57 +299,128 @@ RESUME:
 {resume_text}
 
 JOB DESCRIPTION:
-{request.job_description}
+{job_description}
 
 Provide response as JSON only."""
-        
-        user_message = UserMessage(text=prompt)
-        response = await chat.send_message(user_message)
-        
-        # Parse response
-        import json
-        response_text = response.strip()
-        if response_text.startswith('```json'):
-            response_text = response_text.split('```json')[1].split('```')[0].strip()
-        elif response_text.startswith('```'):
-            response_text = response_text.split('```')[1].split('```')[0].strip()
-        
-        analysis_data = json.loads(response_text)
-        
-        analysis = ATSAnalysis(
-            user_id=current_user.id,
-            resume_id=request.resume_id,
-            job_description=request.job_description,
-            score=analysis_data.get('score', 75),
-            feedback=analysis_data.get('feedback', ''),
-            strengths=analysis_data.get('strengths', []),
-            improvements=analysis_data.get('improvements', [])
-        )
-        
-    except Exception as e:
-        logging.error(f"ATS analysis error: {str(e)}")
-        # Fallback analysis
-        analysis = ATSAnalysis(
-            user_id=current_user.id,
-            resume_id=request.resume_id,
-            job_description=request.job_description,
-            score=75,
-            feedback="Your resume has been analyzed. Consider tailoring it more to the job description.",
-            strengths=["Clear structure", "Professional formatting"],
-            improvements=["Add more relevant keywords", "Quantify achievements"]
-        )
-    
+
+
+def parse_ai_response(response_text: str) -> dict:
+    text = response_text.strip()
+    if text.startswith('```json'):
+        text = text.split('```json')[1].split('```')[0].strip()
+    elif text.startswith('```'):
+        text = text.split('```')[1].split('```')[0].strip()
+    return json.loads(text)
+
+
+async def call_gemini(prompt: str) -> dict:
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    response = await asyncio.to_thread(
+        model.generate_content,
+        f"{ATS_SYSTEM_PROMPT}\n\n{prompt}"
+    )
+    return parse_ai_response(response.text)
+
+
+async def call_groq(prompt: str) -> dict:
+    groq_client = AsyncGroq(api_key=GROQ_API_KEY)
+    response = await groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": ATS_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.3,
+        max_tokens=2000
+    )
+    return parse_ai_response(response.choices[0].message.content)
+
+
+@api_router.post("/ats/analyze", response_model=ATSAnalysis)
+async def analyze_resume(request: ATSAnalysisRequest, current_user: User = Depends(get_current_user)):
+    # Check usage limits
+    if not current_user.is_premium and current_user.ats_checks_used >= current_user.ats_checks_limit:
+        raise HTTPException(status_code=403, detail="ATS check limit reached. Upgrade to premium for unlimited checks.")
+
+    # Get resume
+    resume = await db.resumes.find_one({"id": request.resume_id, "user_id": current_user.id}, {"_id": 0})
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Build resume text
+    resume_text = f"Resume Title: {resume['title']}\n\n"
+    for section in resume.get('sections', []):
+        resume_text += f"{section['type'].upper()}:\n{section['content']}\n\n"
+
+    prompt = build_ats_prompt(resume_text, request.job_description)
+
+    # Call both AI models in parallel with graceful fallback
+    gemini_result = None
+    groq_result = None
+
+    async def safe_call_gemini():
+        nonlocal gemini_result
+        try:
+            gemini_result = await call_gemini(prompt)
+        except Exception as e:
+            logging.error(f"Gemini error: {str(e)}")
+
+    async def safe_call_groq():
+        nonlocal groq_result
+        try:
+            groq_result = await call_groq(prompt)
+        except Exception as e:
+            logging.error(f"Groq error: {str(e)}")
+
+    await asyncio.gather(safe_call_gemini(), safe_call_groq())
+
+    # Build analysis from dual results
+    gemini_score = gemini_result.get('score', 0) if gemini_result else None
+    groq_score = groq_result.get('score', 0) if groq_result else None
+
+    # Compute combined average score
+    scores = [s for s in [gemini_score, groq_score] if s is not None]
+    combined_score = round(sum(scores) / len(scores)) if scores else 75
+
+    # Pick best available feedback for top-level fields
+    primary = gemini_result or groq_result
+    if not primary:
+        # Both failed — use fallback
+        primary = {
+            'feedback': "Your resume has been analyzed. Consider tailoring it more to the job description.",
+            'strengths': ["Clear structure", "Professional formatting"],
+            'improvements': ["Add more relevant keywords", "Quantify achievements"]
+        }
+
+    analysis = ATSAnalysis(
+        user_id=current_user.id,
+        resume_id=request.resume_id,
+        job_description=request.job_description,
+        score=combined_score,
+        feedback=primary.get('feedback', ''),
+        strengths=primary.get('strengths', []),
+        improvements=primary.get('improvements', []),
+        gemini_score=gemini_score,
+        gemini_feedback=gemini_result.get('feedback', '') if gemini_result else None,
+        gemini_strengths=gemini_result.get('strengths', []) if gemini_result else [],
+        gemini_improvements=gemini_result.get('improvements', []) if gemini_result else [],
+        groq_score=groq_score,
+        groq_feedback=groq_result.get('feedback', '') if groq_result else None,
+        groq_strengths=groq_result.get('strengths', []) if groq_result else [],
+        groq_improvements=groq_result.get('improvements', []) if groq_result else [],
+    )
+
     # Save analysis
     analysis_dict = analysis.model_dump()
     analysis_dict['created_at'] = analysis_dict['created_at'].isoformat()
     await db.ats_analyses.insert_one(analysis_dict)
-    
+
     # Update user's usage count
     await db.users.update_one(
         {"id": current_user.id},
         {"$inc": {"ats_checks_used": 1}}
     )
-    
+
     return analysis
 
 @api_router.get("/ats/analyses", response_model=List[ATSAnalysis])
@@ -346,66 +433,59 @@ async def get_analyses(current_user: User = Depends(get_current_user)):
 
 # ========== PAYMENT ROUTES ==========
 
-@api_router.post("/payments/checkout", response_model=CheckoutSessionResponse)
-async def create_checkout(request: Request, current_user: User = Depends(get_current_user)):
-    # Get origin from request
-    origin = str(request.base_url).rstrip('/')
-    
-    # Fixed premium package
-    amount = 19.99
+@api_router.post("/payments/checkout", response_model=CheckoutResponse)
+async def create_checkout(current_user: User = Depends(get_current_user)):
+    amount = 1999  # $19.99 in cents
     currency = "usd"
-    
-    # Build URLs
-    success_url = f"{origin}/success?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{origin}/pricing"
-    
-    metadata = {
-        "user_id": current_user.id,
-        "product": "premium_subscription"
-    }
-    
-    # Initialize Stripe
-    webhook_url = f"{origin}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
-    
-    # Create checkout session
-    checkout_request = CheckoutSessionRequest(
-        amount=amount,
-        currency=currency,
+
+    success_url = f"{FRONTEND_URL}/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{FRONTEND_URL}/pricing"
+
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{
+            "price_data": {
+                "currency": currency,
+                "product_data": {
+                    "name": "CareerArchitect Premium",
+                    "description": "Unlimited ATS checks, priority support, no ads"
+                },
+                "unit_amount": amount,
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
         success_url=success_url,
         cancel_url=cancel_url,
-        metadata=metadata
+        metadata={
+            "user_id": current_user.id,
+            "product": "premium_subscription"
+        }
     )
-    
-    session = await stripe_checkout.create_checkout_session(checkout_request)
-    
+
     # Save transaction
     transaction = PaymentTransaction(
         user_id=current_user.id,
-        session_id=session.session_id,
-        amount=amount,
+        session_id=session.id,
+        amount=19.99,
         currency=currency,
         status="initiated",
         payment_status="pending",
-        metadata=metadata
+        metadata={"user_id": current_user.id, "product": "premium_subscription"}
     )
-    
+
     transaction_dict = transaction.model_dump()
     transaction_dict['created_at'] = transaction_dict['created_at'].isoformat()
     await db.payment_transactions.insert_one(transaction_dict)
-    
-    return session
 
-@api_router.get("/payments/status/{session_id}", response_model=CheckoutStatusResponse)
-async def get_payment_status(session_id: str, request: Request, current_user: User = Depends(get_current_user)):
-    origin = str(request.base_url).rstrip('/')
-    webhook_url = f"{origin}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
-    
-    status = await stripe_checkout.get_checkout_status(session_id)
-    
+    return CheckoutResponse(session_id=session.id, url=session.url)
+
+@api_router.get("/payments/status/{session_id}", response_model=PaymentStatusResponse)
+async def get_payment_status(session_id: str, current_user: User = Depends(get_current_user)):
+    session = stripe.checkout.Session.retrieve(session_id)
+
     # Update transaction if paid
-    if status.payment_status == "paid":
+    if session.payment_status == "paid":
         transaction = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
         if transaction and transaction['payment_status'] != "paid":
             await db.payment_transactions.update_one(
@@ -417,40 +497,45 @@ async def get_payment_status(session_id: str, request: Request, current_user: Us
                 {"id": current_user.id},
                 {"$set": {"is_premium": True, "ats_checks_used": 0}}
             )
-    
-    return status
+
+    return PaymentStatusResponse(
+        session_id=session.id,
+        status=session.status,
+        payment_status=session.payment_status
+    )
 
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     body = await request.body()
     signature = request.headers.get("Stripe-Signature")
-    
-    origin = str(request.base_url).rstrip('/')
-    webhook_url = f"{origin}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
-    
+
     try:
-        webhook_response = await stripe_checkout.handle_webhook(body, signature)
-        
-        if webhook_response.payment_status == "paid":
-            transaction = await db.payment_transactions.find_one({"session_id": webhook_response.session_id}, {"_id": 0})
+        event = stripe.Webhook.construct_event(body, signature, STRIPE_WEBHOOK_SECRET)
+    except (ValueError, stripe.error.SignatureVerificationError) as e:
+        logging.error(f"Webhook signature verification failed: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        session_id = session["id"]
+        payment_status = session.get("payment_status", "")
+
+        if payment_status == "paid":
+            transaction = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
             if transaction and transaction['payment_status'] != "paid":
                 await db.payment_transactions.update_one(
-                    {"session_id": webhook_response.session_id},
+                    {"session_id": session_id},
                     {"$set": {"payment_status": "paid", "status": "completed"}}
                 )
                 # Upgrade user
-                user_id = transaction['metadata'].get('user_id')
+                user_id = transaction.get('metadata', {}).get('user_id')
                 if user_id:
                     await db.users.update_one(
                         {"id": user_id},
                         {"$set": {"is_premium": True, "ats_checks_used": 0}}
                     )
-        
-        return {"status": "success"}
-    except Exception as e:
-        logging.error(f"Webhook error: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"status": "success"}
 
 # ========== INCLUDE ROUTER ==========
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, Zap, Target, TrendingUp, Star } from 'lucide-react';
 import { AuthContext } from '../App';
 import AuthModal from '../components/AuthModal';
+import AffiliateLinks from '../components/AffiliateLinks';
 
 const LandingPage = () => {
   const [showAuth, setShowAuth] = useState(false);
@@ -206,12 +207,15 @@ const LandingPage = () => {
 
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 py-12 px-6 md:px-12 lg:px-24">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center gap-2 mb-6">
             <FileText className="w-6 h-6 text-blue-400" />
             <span className="text-xl font-bold text-white" style={{ fontFamily: 'Outfit' }}>CareerArchitect</span>
           </div>
-          <p className="text-sm">© 2026 CareerArchitect. All rights reserved.</p>
+          <div className="mb-8">
+            <AffiliateLinks layout="horizontal" />
+          </div>
+          <p className="text-sm text-center">© 2026 CareerArchitect. All rights reserved.</p>
         </div>
       </footer>
 

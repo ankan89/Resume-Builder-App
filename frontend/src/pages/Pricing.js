@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ArrowLeft, Check, Crown, Zap } from 'lucide-react';
 import { AuthContext } from '../App';
+import AdSense from '../components/AdSense';
+import AffiliateLinks from '../components/AffiliateLinks';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -151,9 +153,15 @@ const Pricing = () => {
         </div>
 
         {/* Ad Space */}
-        <div className="mt-12 bg-slate-100 border border-slate-200 rounded-2xl p-8 text-center">
-          <div className="text-sm text-slate-500 mb-2">Advertisement</div>
-          <div className="text-slate-400">Google AdSense Placement</div>
+        {!user?.is_premium && (
+          <div className="mt-12">
+            <AdSense slot="pricing-ad" className="rounded-2xl overflow-hidden" />
+          </div>
+        )}
+
+        {/* Affiliate Links */}
+        <div className="mt-8">
+          <AffiliateLinks layout="horizontal" />
         </div>
       </div>
     </div>
