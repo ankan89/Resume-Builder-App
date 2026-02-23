@@ -15,6 +15,29 @@ const API = `${BACKEND_URL}/api`;
 
 export const AuthContext = React.createContext();
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', fontFamily: 'monospace' }}>
+          <h1 style={{ color: 'red' }}>Something went wrong</h1>
+          <pre style={{ whiteSpace: 'pre-wrap', color: '#333' }}>
+            {this.state.error?.toString()}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -77,6 +100,7 @@ function App() {
   }
 
   return (
+    <ErrorBoundary>
     <AuthContext.Provider value={{ user, login, register, logout, refreshUser }}>
       <BrowserRouter>
         <Routes>
@@ -108,6 +132,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthContext.Provider>
+    </ErrorBoundary>
   );
 }
 
