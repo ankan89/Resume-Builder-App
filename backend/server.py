@@ -839,10 +839,16 @@ async def stripe_webhook(request: Request):
 
 app.include_router(api_router)
 
+cors_raw = os.environ.get('CORS_ORIGINS', '*')
+cors_origins = [o.strip().rstrip('/') for o in cors_raw.split(',') if o.strip()]
+if not cors_origins:
+    cors_origins = ['*']
+logging.info(f"CORS origins configured: {cors_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_credentials=False,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
