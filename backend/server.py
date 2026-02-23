@@ -279,6 +279,8 @@ async def call_groq_generate(prompt: str) -> dict:
 
 
 async def call_gemini_generate(prompt: str) -> dict:
+    if gemini_client is None:
+        raise RuntimeError("Gemini client is not initialized: GEMINI_API_KEY is missing or not set")
     response = await asyncio.to_thread(
         gemini_client.models.generate_content,
         model='gemini-2.0-flash',
@@ -377,6 +379,7 @@ async def create_resume(resume_data: ResumeCreate, current_user: User = Depends(
     resume_dict['updated_at'] = resume_dict['updated_at'].isoformat()
 
     await db.resumes.insert_one(resume_dict)
+    resume_dict.pop('_id', None)  # Remove MongoDB ObjectId (not JSON-serializable)
     return resume
 
 @api_router.get("/resumes", response_model=List[Resume])
@@ -487,11 +490,16 @@ async def batch_generate_resumes(request: BatchGenerateRequest, current_user: Us
         resume_dict['created_at'] = resume_dict['created_at'].isoformat()
         resume_dict['updated_at'] = resume_dict['updated_at'].isoformat()
         await db.resumes.insert_one(resume_dict)
+        resume_dict.pop('_id', None)  # Remove MongoDB ObjectId (not JSON-serializable)
 
         return {"resume": resume_dict, "provider": ai_provider, "profile_id": profile_id}
 
     # Run all generations in parallel
-    results = await asyncio.gather(*[generate_single_resume(pid) for pid in request.job_profiles])
+    try:
+        results = await asyncio.gather(*[generate_single_resume(pid) for pid in request.job_profiles])
+    except Exception as e:
+        logging.error(f"Batch generate unexpected error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch generation failed: {str(e)}")
 
     successful = [r for r in results if r is not None]
     failed = [request.job_profiles[i] for i, r in enumerate(results) if r is None]
@@ -587,6 +595,8 @@ def parse_ai_response(response_text: str) -> dict:
 
 
 async def call_gemini(prompt: str) -> dict:
+    if gemini_client is None:
+        raise RuntimeError("Gemini client is not initialized: GEMINI_API_KEY is missing or not set")
     response = await asyncio.to_thread(
         gemini_client.models.generate_content,
         model='gemini-2.0-flash',
