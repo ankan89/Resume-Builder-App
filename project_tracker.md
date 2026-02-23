@@ -333,6 +333,10 @@ REACT_APP_BACKEND_URL=http://localhost:8001
 23. `d86dda4` — Add ErrorBoundary to diagnose blank page
 24. `4ec9726` — Update project tracker: deployment fixes, workflow rules
 25. `d19f8ea` — **Fix blank page: add missing CSS variables for shadcn/ui theme**
+26. `901d5e5` — Update tracker: blank page bug fixed
+27. `86d23fd` — **Fix batch-generate 500 + Gemini null guard** (Session 5)
+28. `0e83cac` — Add password reset: backend endpoint + frontend UI
+29. `88dab3e` — **Fix CORS: allow all origins** (was causing login/register 400)
 
 ---
 
@@ -358,6 +362,7 @@ Pages:
 
 API Endpoints:
   POST /api/auth/register          POST /api/auth/login           GET  /api/auth/me
+  POST /api/auth/reset-password    (NEW — Session 5)
   GET  /api/resumes                POST /api/resumes              GET  /api/resumes/{id}
   PUT  /api/resumes/{id}           DELETE /api/resumes/{id}
   GET  /api/resumes/job-profiles   POST /api/resumes/batch-generate    (NEW)
@@ -438,6 +443,7 @@ API Endpoints:
 | 2 | 2026-02-22 | Deployment complete, registration verified | Claude | — |
 | 3 | 2026-02-23 | AI Batch Resume Generation feature (plan → implement → test → deploy) | Claude Opus 4.6 | 4 parallel (2 Sonnet, 2 Haiku) |
 | 4 | 2026-02-23 | Enhancements (skeleton, badge, retry) + google.genai migration | **Claude Opus 4.6** | 5 parallel (2 Sonnet, 3 Haiku) |
+| 5 | 2026-02-24 | Production testing, bug fixes (batch 500, CORS, auth), password reset | **Claude Opus 4.6** | 1 Sonnet (bug fixes) |
 
 **Session 4 subagent details:**
 - **Orchestrator:** Claude Opus 4.6 — analysis, coordination, applied all edits, health checks
@@ -451,22 +457,71 @@ API Endpoints:
 
 ---
 
+## Phase 8: Production Testing & Bug Fixes (Session 5)
+
+> **Date:** 2026-02-24
+> **Approach:** Direct curl tests from orchestrator (no subagents needed for testing). One Sonnet subagent for bug fixes.
+
+### 8.1 Bug Fixes Applied — DONE ✅
+- **`_id` ObjectId fix** (`86d23fd`): `resume_dict.pop('_id', None)` after every `insert_one` (2 locations) — prevents JSON serialization crash
+- **Gemini null guard** (`86d23fd`): `if gemini_client is None: raise RuntimeError(...)` in both `call_gemini()` and `call_gemini_generate()`
+- **Batch generate error handling** (`86d23fd`): Wrapped `asyncio.gather` in try/except → proper JSON error instead of bare 500
+- **Password reset** (`0e83cac`): Added `POST /api/auth/reset-password` endpoint + frontend "Forgot your password?" flow in AuthModal
+- **CORS fix** (`88dab3e`): Changed to `allow_origins=["*"]` — old config caused OPTIONS preflight 400. Safe because auth uses Bearer tokens, not cookies
+
+### 8.2 Production Test Results — ALL PASS ✅
+
+| Test | Status | Details |
+|------|--------|---------|
+| Backend health | **PASS** | `{"status":"ok"}` |
+| Registration | **PASS** | Returns token + user (field: `full_name`) |
+| Login | **PASS** | Returns new token |
+| GET /api/auth/me | **PASS** | User profile with limits |
+| Create resume | **PASS** | Stores with sections |
+| List resumes | **PASS** | Returns array |
+| Get single resume | **PASS** | By ID |
+| ATS analysis | **PASS** | Groq: 92/100 with feedback, strengths, improvements |
+| ATS history | **PASS** | Returns past analyses |
+| Job profiles | **PASS** | All 8 returned |
+| Batch gen (1 profile) | **PASS** | Full AI-tailored resume via Groq |
+| Batch gen (3 profiles) | **PASS** | All 3 parallel, unique content per profile |
+| Free tier limit | **PASS** | Blocks at 5 resumes |
+| Stripe checkout | **PASS** | Returns `checkout.stripe.com` URL |
+| Frontend (Vercel) | **PASS** | HTTP 200, serves React SPA |
+
+### 8.3 Known Limitation: Gemini Returns Null
+- Groq handles all AI calls successfully (primary provider)
+- Gemini fails: `429 RESOURCE_EXHAUSTED` — free tier quota exhausted (`limit: 0` for gemini-2.0-flash)
+- **Root cause confirmed from Render logs:** Not a code bug — Gemini API key is on free tier with no remaining quota
+- **Impact: LOW** — Groq provides full functionality; Gemini is bonus dual-scoring
+- **Fix options:** Get new API key, enable billing on Google AI Studio, or leave as-is (Groq handles everything)
+
+### 8.4 Additional Issues Found & Fixed
+- **JWT secret too short:** Render logs show `InsecureKeyLengthWarning: HMAC key is 18 bytes` (needs 32+). User should update `JWT_SECRET` on Render.
+- **Browser cache:** Production Vercel URL (`resume-builder-app-mu-seven.vercel.app`) showed blank page due to cached old build. Hard refresh (`Cmd+Shift+R`) fixed it. Vercel alias correctly points to latest deployment.
+
+### 8.5 Files Modified (Session 5)
+
+| File | Action | Commit |
+|------|--------|--------|
+| `backend/server.py` | Modified — _id fix, Gemini guard, batch error handling | `86d23fd` |
+| `backend/server.py` | Modified — password reset endpoint, PasswordReset model | `0e83cac` |
+| `frontend/src/components/AuthModal.js` | Modified — 3-mode UI (login/register/reset) | `0e83cac` |
+| `backend/server.py` | Modified — CORS allow all origins | `88dab3e` |
+
+---
+
 ## Remaining Work (pick up here if session ended)
 
-### BLANK PAGE BUG — FIXED ✅ (`d19f8ea`)
-- Root cause: Missing CSS variables in `index.css` made all text invisible
-- Fix: Added shadcn/ui `:root` CSS variables
-
-### TESTING:
-3. **Test batch generation with real AI on production** — Login on live site, try batch-generate with real Groq/Gemini keys (now using gemini-2.0-flash)
-4. **Test full existing flow** — Login → Create Resume → ATS Analysis → see dual Gemini/Groq scores
-5. **Test payment** — Click Upgrade → Stripe checkout (test mode)
+### CONFIGURATION (manual, on dashboards):
+1. **JWT_SECRET:** Update on Render to 32+ character string (current is only 18 bytes)
+2. **Stripe webhook:** Create endpoint in Stripe dashboard → `https://rdsumebuilder-api.onrender.com/api/webhook/stripe` → set `STRIPE_WEBHOOK_SECRET` on Render
+3. **Gemini quota:** Get new API key or enable billing on Google AI Studio (free tier exhausted)
 
 ### INFRASTRUCTURE:
-6. Stripe webhook: Create endpoint in Stripe dashboard → `https://rdsumebuilder-api.onrender.com/api/webhook/stripe` → set `STRIPE_WEBHOOK_SECRET` on Render
-7. AdSense: Apply at Google AdSense → replace `ca-pub-XXXXXXXX` in `index.html` and `AdSense.js`
-8. Affiliate links: Sign up for programs → replace placeholder URLs with tracking links
-9. Render cold starts: Consider cron ping to keep free tier warm (15min inactivity = ~30s cold start)
+4. AdSense: Apply at Google AdSense → replace `ca-pub-XXXXXXXX` in `index.html` and `AdSense.js`
+5. Affiliate links: Sign up for programs → replace placeholder URLs with tracking links
+6. Render cold starts: Consider cron ping to keep free tier warm (15min inactivity = ~30s cold start)
 
 ---
 
