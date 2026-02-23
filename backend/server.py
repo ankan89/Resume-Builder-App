@@ -73,6 +73,10 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+class PasswordReset(BaseModel):
+    email: EmailStr
+    new_password: str
+
 class TokenResponse(BaseModel):
     token: str
     user: User
@@ -358,6 +362,17 @@ async def login(credentials: UserLogin):
     token = create_token(user.id)
 
     return TokenResponse(token=token, user=user)
+
+@api_router.post("/auth/reset-password")
+async def reset_password(request: PasswordReset):
+    user_doc = await db.users.find_one({"email": request.email})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="No account found with this email")
+
+    hashed = hash_password(request.new_password)
+    await db.users.update_one({"email": request.email}, {"$set": {"password": hashed}})
+
+    return {"message": "Password reset successfully. You can now log in with your new password."}
 
 @api_router.get("/auth/me", response_model=User)
 async def get_me(current_user: User = Depends(get_current_user)):
