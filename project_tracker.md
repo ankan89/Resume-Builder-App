@@ -1,6 +1,6 @@
 # Project Tracker: CareerArchitect — Resume Builder App
 
-> **Last updated:** 2026-02-23 (Session 3 — AI Batch Resume Generation — DEPLOYED)
+> **Last updated:** 2026-02-23 (Session 4 — Enhancements + google.genai migration)
 > **Purpose:** Resume point if token/session runs out. Each task has a status so the next session picks up exactly where we left off.
 
 ---
@@ -379,21 +379,87 @@ API Endpoints:
 
 ---
 
+## Phase 7: Enhancements + SDK Migration (Session 4)
+
+> **Date:** 2026-02-23
+> **Approach:** 5 parallel agents (3 Haiku, 2 Sonnet), orchestrated by Claude Opus 4.6. Haiku agents hit permission issues; orchestrator applied edits directly using agent-provided diffs.
+
+### 7.1 Loading Skeleton — BatchGenerate Step 2 — DONE ✅
+- Replaced spinner + "Loading profiles..." text with **6 animated skeleton cards**
+- Skeleton cards match the profile card layout (2-col grid, rounded-xl, pulse animation)
+- Each skeleton has: title bar placeholder, checkbox placeholder, 3 keyword tag placeholders
+
+### 7.2 Batch-Generated Badge — Dashboard — DONE ✅
+- Added purple "AI Generated" badge with Zap icon on resume cards where `resume.batch_generated === true`
+- Badge: `text-purple-700 bg-purple-50 border-purple-200` rounded-full pill
+- Displayed inline next to the template name
+
+### 7.3 Retry Failed Profiles — BatchGenerate Step 3 — DONE ✅
+- Added `RefreshCw` icon import from lucide-react
+- New `handleRetryFailed()` async function (~70 LOC):
+  - Collects all profile IDs with `status === 'failed'`
+  - Re-sends batch-generate API call with only failed IDs (reuses existing form data)
+  - Merges new results into existing results array (deduplicates by ID)
+  - Updates profile statuses and generation stats
+- Added "Retry Failed (N)" red button in Step 3 action bar (conditionally shown when failures exist)
+
+### 7.4 Migrate google.generativeai → google.genai — DONE ✅
+- **requirements.txt:** `google-generativeai>=0.8,<1` → `google-genai>=1.0,<2`
+- **server.py:**
+  - Import: `import google.generativeai as genai` → `from google import genai`
+  - Config: `genai.configure(api_key=...)` → `gemini_client = genai.Client(api_key=...)`
+  - Both `call_gemini()` and `call_gemini_generate()` now use `gemini_client.models.generate_content(model=..., contents=...)`
+  - Model upgraded: `gemini-1.5-flash` → `gemini-2.0-flash`
+
+### 7.5 Production Health Check — DONE ✅
+- Backend `/health`: `{"status":"ok"}` ✅
+- Frontend (Vercel): HTTP 200 ✅
+- Job profiles (no auth): HTTP 403 (auth required, correct) ✅
+
+---
+
+## Files Modified (Session 4)
+
+| File | Action | Changes |
+|------|--------|---------|
+| `backend/requirements.txt` | Modified | google-generativeai → google-genai |
+| `backend/server.py` | Modified | New genai SDK, Client pattern, gemini-2.0-flash |
+| `frontend/.gitignore` | Modified | Added `.vercel` directory |
+| `frontend/src/pages/BatchGenerate.js` | Modified | Skeleton loading, retry failed, RefreshCw import (+108 lines) |
+| `frontend/src/pages/Dashboard.js` | Modified | AI Generated badge on batch resumes (+10 lines) |
+
+---
+
+## Session History & AI Models Used
+
+| Session | Date | Work Done | Primary Model | Subagents |
+|---------|------|-----------|---------------|-----------|
+| 1 | 2026-02-22 | Emergent → Vercel/Render migration, dual AI, deployment fixes | Claude | — |
+| 2 | 2026-02-22 | Deployment complete, registration verified | Claude | — |
+| 3 | 2026-02-23 | AI Batch Resume Generation feature (plan → implement → test → deploy) | Claude Opus 4.6 | 4 parallel (2 Sonnet, 2 Haiku) |
+| 4 | 2026-02-23 | Enhancements (skeleton, badge, retry) + google.genai migration | **Claude Opus 4.6** | 5 parallel (2 Sonnet, 3 Haiku) |
+
+**Session 4 subagent details:**
+- **Orchestrator:** Claude Opus 4.6 — analysis, coordination, applied all edits, health checks
+- **Agent 1 (Haiku):** Skeleton loading — provided diff, orchestrator applied
+- **Agent 2 (Haiku):** Dashboard badge — provided diff, orchestrator applied
+- **Agent 3 (Sonnet):** Retry failed profiles — provided 3 diffs, orchestrator applied
+- **Agent 4 (Sonnet):** google.genai migration — provided 5 diffs, orchestrator applied
+- **Agent 5 (Haiku):** Production health check — blocked on curl, orchestrator ran directly
+
+**Note:** Haiku/Sonnet subagents launched as Bash type lacked Edit tool permissions. Orchestrator applied all edits directly from agent-provided diffs. Future sessions should use `general-purpose` subagent type for edit tasks.
+
+---
+
 ## Remaining Work (pick up here if session ended)
 
 ### IMMEDIATE:
-1. **Test batch generation with real AI on production** — Login on live site, try batch-generate with real Groq/Gemini keys
+1. **Test batch generation with real AI on production** — Login on live site, try batch-generate with real Groq/Gemini keys (now using gemini-2.0-flash)
 2. **Test full existing flow** — Login → Create Resume → ATS Analysis → see dual Gemini/Groq scores
 3. **Test payment** — Click Upgrade → Stripe checkout (test mode)
 
-### ENHANCEMENTS:
-4. Loading skeleton states in BatchGenerate Step 2 (while profiles fetch)
-5. Show batch-generated resumes with a badge/tag on Dashboard
-6. Allow re-generation of failed profiles without re-entering all info
-
 ### INFRASTRUCTURE:
-7. Stripe webhook: Create endpoint in Stripe dashboard → `https://rdsumebuilder-api.onrender.com/api/webhook/stripe` → set `STRIPE_WEBHOOK_SECRET` on Render
-8. AdSense: Apply at Google AdSense → replace `ca-pub-XXXXXXXX` in `index.html` and `AdSense.js`
-9. Affiliate links: Sign up for programs → replace placeholder URLs with tracking links
-10. Render cold starts: Consider cron ping to keep free tier warm (15min inactivity = ~30s cold start)
-11. Migrate deprecated `google.generativeai` → `google.genai` (warning on every startup, still works)
+4. Stripe webhook: Create endpoint in Stripe dashboard → `https://rdsumebuilder-api.onrender.com/api/webhook/stripe` → set `STRIPE_WEBHOOK_SECRET` on Render
+5. AdSense: Apply at Google AdSense → replace `ca-pub-XXXXXXXX` in `index.html` and `AdSense.js`
+6. Affiliate links: Sign up for programs → replace placeholder URLs with tracking links
+7. Render cold starts: Consider cron ping to keep free tier warm (15min inactivity = ~30s cold start)

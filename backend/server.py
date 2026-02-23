@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
 import bcrypt
-import google.generativeai as genai
+from google import genai
 from groq import AsyncGroq
 import stripe
 import certifi
@@ -46,8 +46,7 @@ STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
 # Configure Gemini
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 # Create the main app
 app = FastAPI()
@@ -280,10 +279,10 @@ async def call_groq_generate(prompt: str) -> dict:
 
 
 async def call_gemini_generate(prompt: str) -> dict:
-    model = genai.GenerativeModel('gemini-1.5-flash')
     response = await asyncio.to_thread(
-        model.generate_content,
-        f"{RESUME_GENERATION_SYSTEM_PROMPT}\n\n{prompt}"
+        gemini_client.models.generate_content,
+        model='gemini-2.0-flash',
+        contents=f"{RESUME_GENERATION_SYSTEM_PROMPT}\n\n{prompt}"
     )
     return parse_ai_response(response.text)
 
@@ -588,10 +587,10 @@ def parse_ai_response(response_text: str) -> dict:
 
 
 async def call_gemini(prompt: str) -> dict:
-    model = genai.GenerativeModel('gemini-1.5-flash')
     response = await asyncio.to_thread(
-        model.generate_content,
-        f"{ATS_SYSTEM_PROMPT}\n\n{prompt}"
+        gemini_client.models.generate_content,
+        model='gemini-2.0-flash',
+        contents=f"{ATS_SYSTEM_PROMPT}\n\n{prompt}"
     )
     return parse_ai_response(response.text)
 

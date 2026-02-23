@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, ArrowRight, Zap, Check, Loader2, FileText, Target, Plus, Trash2, ChevronDown } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Zap, Check, Loader2, FileText, Target, Plus, Trash2, ChevronDown, RefreshCw } from 'lucide-react';
 import { AuthContext } from '../App';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -209,6 +209,83 @@ export default function BatchGenerate() {
         failedStatuses[id] = 'failed';
       });
       setProfileStatuses(failedStatuses);
+    } finally {
+      setGenerationLoading(false);
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    const failedIds = Object.entries(profileStatuses)
+      .filter(([, status]) => status === 'failed')
+      .map(([id]) => id);
+
+    if (failedIds.length === 0) return;
+
+    // Mark failed profiles as loading
+    setProfileStatuses((prev) => {
+      const updated = { ...prev };
+      failedIds.forEach((id) => { updated[id] = 'loading'; });
+      return updated;
+    });
+    setGenerationLoading(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const payload = {
+        personal_info: {
+          name: personalInfo.name,
+          email: personalInfo.email,
+          phone: personalInfo.phone,
+          location: personalInfo.location,
+        },
+        summary_base: summaryBase,
+        experience: experiences.map(({ position, company, duration, description }) => ({
+          position,
+          company,
+          duration,
+          description,
+        })),
+        education: educations.map(({ degree, institution, year, details }) => ({
+          degree,
+          institution,
+          year,
+          details,
+        })),
+        skills_base: skillsBase,
+        job_profiles: failedIds,
+        template,
+      };
+
+      const res = await axios.post(`${API}/resumes/batch-generate`, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const { resumes = [], generation_stats } = res.data;
+
+      const failedSet = new Set(generation_stats?.failed_profiles || []);
+      setProfileStatuses((prev) => {
+        const updated = { ...prev };
+        resumes.forEach((resume) => {
+          if (resume.job_profile) updated[resume.job_profile] = 'success';
+        });
+        failedSet.forEach((id) => { updated[id] = 'failed'; });
+        failedIds.forEach((id) => {
+          if (updated[id] === 'loading') updated[id] = 'failed';
+        });
+        return updated;
+      });
+      setResults((prev) => {
+        const existingIds = new Set(prev.map((r) => r.id));
+        const newResumes = resumes.filter((r) => !existingIds.has(r.id));
+        return [...prev, ...newResumes];
+      });
+      setGenerationStats(generation_stats);
+    } catch (err) {
+      setProfileStatuses((prev) => {
+        const updated = { ...prev };
+        failedIds.forEach((id) => { updated[id] = 'failed'; });
+        return updated;
+      });
     } finally {
       setGenerationLoading(false);
     }
@@ -612,9 +689,20 @@ export default function BatchGenerate() {
               </p>
 
               {profilesLoading && (
-                <div className="flex items-center justify-center py-12" data-testid="profiles-loading">
-                  <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
-                  <span className="ml-3 text-slate-500 text-sm">Loading profiles...</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="profiles-loading">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="border-2 border-slate-100 rounded-xl p-4 animate-pulse">
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                        <div className="w-5 h-5 rounded border-2 border-slate-200 flex-shrink-0"></div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <div className="h-5 bg-slate-100 rounded-full w-16"></div>
+                        <div className="h-5 bg-slate-100 rounded-full w-20"></div>
+                        <div className="h-5 bg-slate-100 rounded-full w-14"></div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -938,7 +1026,7 @@ export default function BatchGenerate() {
             )}
 
             {/* Step 3 action */}
-            <div className="flex justify-start">
+            <div className="flex items-center justify-between">
               <button
                 onClick={() => navigate('/dashboard')}
                 className="flex items-center gap-2 text-slate-600 hover:text-slate-800 font-semibold px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition"
@@ -947,6 +1035,16 @@ export default function BatchGenerate() {
                 <ArrowLeft className="w-4 h-4" />
                 Back to Dashboard
               </button>
+              {!generationLoading && Object.values(profileStatuses).some(s => s === 'failed') && (
+                <button
+                  onClick={handleRetryFailed}
+                  className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-2.5 rounded-xl transition shadow"
+                  data-testid="retry-failed-btn"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Retry Failed ({Object.values(profileStatuses).filter(s => s === 'failed').length})
+                </button>
+              )}
             </div>
           </div>
         )}

@@ -189,7 +189,15 @@ const Dashboard = () => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-slate-900 truncate">{resume.title}</h3>
-                      <p className="text-sm text-slate-500 capitalize">{resume.template} template</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-slate-500 capitalize">{resume.template} template</p>
+                        {resume.batch_generated && (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
+                            <Zap className="w-3 h-3" />
+                            AI Generated
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
