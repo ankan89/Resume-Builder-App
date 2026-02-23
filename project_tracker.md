@@ -331,6 +331,8 @@ REACT_APP_BACKEND_URL=http://localhost:8001
 21. `e501b33` — Trigger Vercel rebuild with frontend root directory
 22. `19bea63` — Comment out placeholder AdSense script
 23. `d86dda4` — Add ErrorBoundary to diagnose blank page
+24. `4ec9726` — Update project tracker: deployment fixes, workflow rules
+25. `d19f8ea` — **Fix blank page: add missing CSS variables for shadcn/ui theme**
 
 ---
 
@@ -408,7 +410,7 @@ API Endpoints:
 - **Vercel Root Directory:** Was NOT SET (deploying from repo root) → fixed to `frontend` via Vercel API
 - **AdSense placeholder:** `ca-pub-XXXXXXXX` in `index.html` commented out (invalid ID could cause errors)
 - **ErrorBoundary:** Added to `App.js` to catch and display React crashes instead of blank page
-- **Blank page investigation:** Page loads HTML/CSS then goes blank — React runtime error. ErrorBoundary deployed to surface the actual error message.
+- **Blank page ROOT CAUSE FOUND:** `tailwind.config.js` referenced CSS variables (`--border`, `--foreground`, `--background`, etc.) via `hsl(var(--name))` but they were **never defined** in any CSS file. This caused `color: hsl(var(--foreground))` → `color: transparent`, making all text invisible. **FIX:** Added standard shadcn/ui light theme CSS variables to `:root` in `index.css` (`d19f8ea`).
 
 ---
 
@@ -424,6 +426,7 @@ API Endpoints:
 | `frontend/vercel.json` | Modified | Fixed: npm+craco instead of yarn |
 | `frontend/public/index.html` | Modified | Commented out placeholder AdSense script |
 | `frontend/src/App.js` | Modified | Added ErrorBoundary class component |
+| `frontend/src/index.css` | Modified | Added shadcn/ui CSS variables (:root) — **fixes blank page** |
 
 ---
 
@@ -450,9 +453,9 @@ API Endpoints:
 
 ## Remaining Work (pick up here if session ended)
 
-### CRITICAL — BLANK PAGE BUG:
-1. **Diagnose blank page** — ErrorBoundary deployed (`d86dda4`). Hard refresh the production site → if error message shows, fix the root cause. If still blank, check browser DevTools console.
-2. **Possible causes:** Missing CSS variables (shadcn/ui `--border` etc. never defined in `index.css`), or a 3rd party library crash
+### BLANK PAGE BUG — FIXED ✅ (`d19f8ea`)
+- Root cause: Missing CSS variables in `index.css` made all text invisible
+- Fix: Added shadcn/ui `:root` CSS variables
 
 ### TESTING:
 3. **Test batch generation with real AI on production** — Login on live site, try batch-generate with real Groq/Gemini keys (now using gemini-2.0-flash)
