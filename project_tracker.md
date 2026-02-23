@@ -325,25 +325,12 @@ REACT_APP_BACKEND_URL=http://localhost:8001
 15. `748c20d` — Fix: replace passlib with direct bcrypt
 16. `0ee1240` — Update project tracker: deployment complete, registration working
 17. `ae713ea` — **Add AI batch resume generation** (Session 3)
-
----
-
-## Session History & AI Models Used
-
-| Session | Date | Work Done | Primary Model | Subagents |
-|---------|------|-----------|---------------|-----------|
-| 1 | 2026-02-22 | Emergent → Vercel/Render migration, dual AI, deployment fixes | Claude | — |
-| 2 | 2026-02-22 | Deployment complete, registration verified | Claude | — |
-| 3 | 2026-02-23 | AI Batch Resume Generation feature (plan → implement → test → deploy) | **Claude Opus 4.6** | 4 parallel (see §6.1) |
-
-**Session 3 subagent details:**
-- **Orchestrator:** Claude Opus 4.6 — planning, coordination, testing, deployment
-- **Agent 1 (Sonnet):** Backend `server.py` — all models, presets, AI callers, endpoints (~35.6k tokens, 91s)
-- **Agent 2 (Sonnet):** Frontend `BatchGenerate.js` — full 3-step wizard component (~24.1k tokens, 120s)
-- **Agent 3 (Haiku):** Frontend `App.js` — 2-line edit: import + route (~14.4k tokens, 8s)
-- **Agent 4 (Haiku):** Frontend `Dashboard.js` — 2-line edit: import + button (~17.9k tokens, 11s)
-
-**Cost optimization strategy:** Sonnet for complex multi-edit tasks, Haiku for trivial edits. All 4 ran in parallel (independent files).
+18. `8177989` — Update project tracker: session 3 complete
+19. `07b3b6f` — **Add UI enhancements + google.genai migration** (Session 4)
+20. `0106d8e` — Fix Vercel build: npm+craco instead of yarn
+21. `e501b33` — Trigger Vercel rebuild with frontend root directory
+22. `19bea63` — Comment out placeholder AdSense script
+23. `d86dda4` — Add ErrorBoundary to diagnose blank page
 
 ---
 
@@ -416,6 +403,13 @@ API Endpoints:
 - Frontend (Vercel): HTTP 200 ✅
 - Job profiles (no auth): HTTP 403 (auth required, correct) ✅
 
+### 7.6 Deployment Fixes (discovered during session) — IN PROGRESS
+- **vercel.json:** Was using `yarn install`/`yarn build` → fixed to `npm install --legacy-peer-deps` / `CI=false NODE_OPTIONS=--openssl-legacy-provider craco build`
+- **Vercel Root Directory:** Was NOT SET (deploying from repo root) → fixed to `frontend` via Vercel API
+- **AdSense placeholder:** `ca-pub-XXXXXXXX` in `index.html` commented out (invalid ID could cause errors)
+- **ErrorBoundary:** Added to `App.js` to catch and display React crashes instead of blank page
+- **Blank page investigation:** Page loads HTML/CSS then goes blank — React runtime error. ErrorBoundary deployed to surface the actual error message.
+
 ---
 
 ## Files Modified (Session 4)
@@ -427,6 +421,9 @@ API Endpoints:
 | `frontend/.gitignore` | Modified | Added `.vercel` directory |
 | `frontend/src/pages/BatchGenerate.js` | Modified | Skeleton loading, retry failed, RefreshCw import (+108 lines) |
 | `frontend/src/pages/Dashboard.js` | Modified | AI Generated badge on batch resumes (+10 lines) |
+| `frontend/vercel.json` | Modified | Fixed: npm+craco instead of yarn |
+| `frontend/public/index.html` | Modified | Commented out placeholder AdSense script |
+| `frontend/src/App.js` | Modified | Added ErrorBoundary class component |
 
 ---
 
@@ -453,13 +450,26 @@ API Endpoints:
 
 ## Remaining Work (pick up here if session ended)
 
-### IMMEDIATE:
-1. **Test batch generation with real AI on production** — Login on live site, try batch-generate with real Groq/Gemini keys (now using gemini-2.0-flash)
-2. **Test full existing flow** — Login → Create Resume → ATS Analysis → see dual Gemini/Groq scores
-3. **Test payment** — Click Upgrade → Stripe checkout (test mode)
+### CRITICAL — BLANK PAGE BUG:
+1. **Diagnose blank page** — ErrorBoundary deployed (`d86dda4`). Hard refresh the production site → if error message shows, fix the root cause. If still blank, check browser DevTools console.
+2. **Possible causes:** Missing CSS variables (shadcn/ui `--border` etc. never defined in `index.css`), or a 3rd party library crash
+
+### TESTING:
+3. **Test batch generation with real AI on production** — Login on live site, try batch-generate with real Groq/Gemini keys (now using gemini-2.0-flash)
+4. **Test full existing flow** — Login → Create Resume → ATS Analysis → see dual Gemini/Groq scores
+5. **Test payment** — Click Upgrade → Stripe checkout (test mode)
 
 ### INFRASTRUCTURE:
-4. Stripe webhook: Create endpoint in Stripe dashboard → `https://rdsumebuilder-api.onrender.com/api/webhook/stripe` → set `STRIPE_WEBHOOK_SECRET` on Render
-5. AdSense: Apply at Google AdSense → replace `ca-pub-XXXXXXXX` in `index.html` and `AdSense.js`
-6. Affiliate links: Sign up for programs → replace placeholder URLs with tracking links
-7. Render cold starts: Consider cron ping to keep free tier warm (15min inactivity = ~30s cold start)
+6. Stripe webhook: Create endpoint in Stripe dashboard → `https://rdsumebuilder-api.onrender.com/api/webhook/stripe` → set `STRIPE_WEBHOOK_SECRET` on Render
+7. AdSense: Apply at Google AdSense → replace `ca-pub-XXXXXXXX` in `index.html` and `AdSense.js`
+8. Affiliate links: Sign up for programs → replace placeholder URLs with tracking links
+9. Render cold starts: Consider cron ping to keep free tier warm (15min inactivity = ~30s cold start)
+
+---
+
+## Session Workflow Rules
+
+> **IMPORTANT — follow these rules every session:**
+> 1. **Start of session:** Read `project_tracker.md` → spin up agents automatically for remaining tasks
+> 2. **After every `git push`:** Update `project_tracker.md` with commit hash, changes, and status
+> 3. **Always use `general-purpose` subagent type** for edit tasks (not Bash — it lacks Edit permissions)
