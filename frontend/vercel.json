@@ -1,5 +1,5 @@
 {
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
-  "installCommand": "yarn install",
-  "buildCommand": "yarn build"
+  "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "CI=false NODE_OPTIONS=--openssl-legacy-provider craco build"
 }
